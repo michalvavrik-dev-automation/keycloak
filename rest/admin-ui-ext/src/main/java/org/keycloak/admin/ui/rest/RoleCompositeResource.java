@@ -64,9 +64,7 @@ public class RoleCompositeResource {
 
         auth.roles().requireView(role);
 
-        List<RoleModel> compositeRoles = role.getCompositesStream()
-                .filter(r -> auth.roles().canView(r))
-                .collect(Collectors.toList());
+        List<RoleModel> compositeRoles = role.getCompositesStream().collect(Collectors.toList());
 
         List<RoleRepresentation> realmMappings = new ArrayList<>();
         Map<String, ClientMappingRepresentation> clientMappings = new HashMap<>();

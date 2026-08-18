@@ -75,9 +75,9 @@ public class RejectResourceOwnerPasswordCredentialsGrantExecutor implements Clie
         switch (context.getEvent()) {
             case REGISTER:
             case UPDATE:
-                ClientCRUDContext clientCRUDContext = (ClientCRUDContext)context;
-                autoConfigure(clientCRUDContext.getProposedClientRepresentation());
-                validate(clientCRUDContext);
+                ClientCRUDContext clientUpdateContext = (ClientCRUDContext)context;
+                autoConfigure(clientUpdateContext.getProposedClientRepresentation());
+                validate(clientUpdateContext.getProposedClientRepresentation());
                 break;
             case RESOURCE_OWNER_PASSWORD_CREDENTIALS_REQUEST:
                 ResourceOwnerPasswordCredentialsContext ropcContext = (ResourceOwnerPasswordCredentialsContext)context;
@@ -93,23 +93,8 @@ public class RejectResourceOwnerPasswordCredentialsGrantExecutor implements Clie
             rep.setDirectAccessGrantsEnabled(Boolean.FALSE);
     }
 
-    private boolean getEffectiveResourceOwnerPasswordCredentialsGrantEnabled(ClientCRUDContext clientCRUDContext) {
-        Boolean resourceOwnerEnabled = clientCRUDContext.getProposedClientRepresentation().isDirectAccessGrantsEnabled();
-        if (resourceOwnerEnabled != null) {
-            return resourceOwnerEnabled;
-        } else {
-            // The "directAccessGrants" field is not filled in the representation, so it effectively has same value as before the update
-            if (clientCRUDContext.getTargetClient() != null) {
-                return clientCRUDContext.getTargetClient().isDirectAccessGrantsEnabled();
-            } else {
-                // Registration of new client. The "directAccessGrants" is disabled by default
-                return false;
-            }
-        }
-    }
-
-    private void validate(ClientCRUDContext clientCRUDContext) throws ClientPolicyException {
-        boolean isResourceOwnerPasswordCredentialsGrantEnabled = getEffectiveResourceOwnerPasswordCredentialsGrantEnabled(clientCRUDContext);
+    private void validate(ClientRepresentation rep) throws ClientPolicyException {
+        boolean isResourceOwnerPasswordCredentialsGrantEnabled = rep.isDirectAccessGrantsEnabled().booleanValue();
         if (!isResourceOwnerPasswordCredentialsGrantEnabled) return;
         throw new ClientPolicyException(OAuthErrorException.INVALID_CLIENT_METADATA, "Invalid client metadata: resource owner password credentials grant enabled");
     }

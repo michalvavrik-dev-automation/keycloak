@@ -11,14 +11,6 @@ The listing endpoints for default and optional client scopes now return an empty
 
 If you have delegated administrators that assign client scopes using Fine-Grained Admin Permissions, ensure they also have the `manage-clients` realm admin role or a type-level `manage` permission on the Clients resource type.
 
-=== Client secret no longer returned for view-only client permissions
-
-The Admin REST API endpoints for retrieving client representations (`GET /admin/realms/\{realm}/clients` and `GET /admin/realms/\{realm}/clients/\{id}`) no longer include the client secret in the response when the caller only has `view-clients` permission. To view the client secret, the caller must have `manage-clients` permission.
-
-Previously, any caller with the `view-clients` role could read client secrets from the API response, which posed a security risk as it allowed read-only administrators to access sensitive credentials. After upgrading, callers with only `view-clients` permission will see a masked placeholder (`**********`) instead of the actual secret value.
-
-If you have delegated administrators or automation that reads client secrets using the `view-clients` role, ensure they are granted the `manage-clients` realm admin role or equivalent `manage` permission on the Clients resource type.
-
 // ------------------------ Notable changes ------------------------ //
 == Notable changes
 
@@ -80,19 +72,6 @@ The *Trust Email* setting of identity providers and LDAP federation is not affec
 == Deprecated features
 
 The following sections provide details on deprecated features.
-
-=== Client certificate REST API endpoints for key pair management
-
-Several REST API endpoints under `/admin/realms/\{realm}/clients/\{id}/certificates/\{attr}` that deal with server-side key pair generation or private key storage are now deprecated:
-
-* `POST .../generate` -- Generates a key pair on the server. Clients should generate their own key pairs locally and upload only the public certificate.
-* `POST .../upload` -- Superseded by `POST .../upload-certificate`, which is functionally identical but not deprecated.
-* `POST .../download` -- Downloads a keystore containing the client's private key. Clients should manage their own private keys.
-* `POST .../generate-and-download` -- Generates a key pair and returns the private key as a keystore download. Clients should generate their own key pairs locally.
-
-These endpoints no longer store private keys in the database. The `generate` endpoint returns the private key in the response but only persists the public certificate. The `generate-and-download` endpoint returns the private key in the keystore download but only persists the public certificate.
-
-Use the `POST .../upload-certificate` endpoint to upload a public certificate or JWKS after generating your key pair locally.
 
 === Introspection endpoint 'jwt' extension
 

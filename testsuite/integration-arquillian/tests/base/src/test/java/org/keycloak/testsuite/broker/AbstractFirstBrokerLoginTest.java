@@ -138,7 +138,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         } catch (NoSuchElementException expected) {
         }
 
-        assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+        try {
+            this.loginPage.clickRegister();
+            Assertions.fail("Not expected to see register link");
+        } catch (NoSuchElementException expected) {
+        }
 
         loginPage.login("password");
         Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
@@ -174,7 +178,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         } catch (NoSuchElementException expected) {
         }
 
-        assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+        try {
+            this.loginPage.clickRegister();
+            Assertions.fail("Not expected to see register link");
+        } catch (NoSuchElementException expected) {
+        }
 
         loginPage.login("foobar", "password");
         Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
@@ -206,7 +214,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         } catch (NoSuchElementException expected) {
         }
 
-        assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+        try {
+            this.loginPage.clickRegister();
+            Assertions.fail("Not expected to see register link");
+        } catch (NoSuchElementException expected) {
+        }
 
         loginPage.login("consumer", "password");
         Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
@@ -237,7 +249,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
             } catch (NoSuchElementException expected) {
             }
 
-            assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+            try {
+                this.loginPage.clickRegister();
+                Assertions.fail("Not expected to see register link");
+            } catch (NoSuchElementException expected) {
+            }
 
             loginPage.login("consumer", "wrongpassword");
             loginPage.assertCurrent();
@@ -246,7 +262,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
 
             assertEquals("Invalid username or password.", loginPage.getInputError());
 
-            assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+            try {
+                this.loginPage.clickRegister();
+                Assertions.fail("Not expected to see register link");
+            } catch (NoSuchElementException expected) {
+            }
         } finally {
             revertRegistrationAllowedModification.run();
         }
@@ -279,7 +299,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         } catch (NoSuchElementException expected) {
         }
 
-        assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+        try {
+            this.loginPage.clickRegister();
+            Assertions.fail("Not expected to see register link");
+        } catch (NoSuchElementException expected) {
+        }
 
         loginPage.resetPassword();
         loginPasswordResetPage.assertCurrent();
@@ -309,7 +333,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         } catch (NoSuchElementException expected) {
         }
 
-        assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+        try {
+            this.loginPage.clickRegister();
+            Assertions.fail("Not expected to see register link");
+        } catch (NoSuchElementException expected) {
+        }
 
         loginPage.resetPassword();
         loginPasswordResetPage.assertCurrent();
@@ -529,7 +557,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         } catch (NoSuchElementException expected) {
         }
 
-        assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+        try {
+            this.loginPage.clickRegister();
+            Assertions.fail("Not expected to see register link");
+        } catch (NoSuchElementException expected) {
+        }
 
         configureSMTPServer();
 

@@ -81,7 +81,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 public class RequiredActionUpdateProfileTest {
 
     private static final String PASSWORD = PasswordGenerateUtil.generatePassword();
-    private static final String EMAIL_ALREADY_EXISTS_ERROR_MESSAGE = "This email is already associated with an existing account.";
 
     @InjectRealm(config = RequiredActionUpdateProfileRealmConfig.class)
     ManagedRealm realm;
@@ -340,7 +339,7 @@ public class RequiredActionUpdateProfileTest {
         Assertions.assertEquals("New last", updateProfilePage.getLastName());
         Assertions.assertEquals("keycloak-user@localhost", updateProfilePage.getEmail());
 
-        Assertions.assertEquals(EMAIL_ALREADY_EXISTS_ERROR_MESSAGE, updateProfilePage.getInputErrors().getEmailError());
+        Assertions.assertEquals("Email already exists.", updateProfilePage.getInputErrors().getEmailError());
 
         Assertions.assertNull(events.poll());
     }
@@ -400,7 +399,7 @@ public class RequiredActionUpdateProfileTest {
         Assertions.assertEquals("New last", updateProfilePage.getLastName());
         Assertions.assertEquals("user1@local.com", updateProfilePage.getEmail());
 
-        Assertions.assertEquals(EMAIL_ALREADY_EXISTS_ERROR_MESSAGE, updateProfilePage.getInputErrors().getEmailError());
+        Assertions.assertEquals("Email already exists.", updateProfilePage.getInputErrors().getEmailError());
 
         Assertions.assertNull(events.poll());
     }

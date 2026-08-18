@@ -46,7 +46,6 @@ import org.keycloak.models.ModelException;
 import org.keycloak.models.ModelValidationException;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.utils.ModelToRepresentation;
-import org.keycloak.models.utils.StripSecretsUtils;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.authorization.ResourceServerRepresentation;
 import org.keycloak.services.ErrorResponse;
@@ -126,9 +125,6 @@ public class ClientsResource {
         return ModelToRepresentation.filterValidRepresentations(
                 getClientModels(clientId, viewableOnly, search, searchQuery, firstResult, maxResults), c -> {
                     ClientRepresentation representation = ModelToRepresentation.toRepresentation(c, session);
-                    if (!auth.clients().canManage(c)) {
-                        StripSecretsUtils.stripClient(representation);
-                    }
                     representation.setAccess(auth.clients().getAccess(c));
                     return representation;
                 });
