@@ -20,7 +20,6 @@ package org.keycloak.tests.conformance.vci;
 import org.keycloak.tests.conformance.ConformanceSigningKey;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import org.bouncycastle.asn1.x509.KeyPurposeId;
 
 /**
  * The attester key, generated at runtime so no private key material is committed to the repository. It is signed
@@ -28,14 +27,12 @@ import org.bouncycastle.asn1.x509.KeyPurposeId;
  * (which validates the x5c chain against the CA). The private JWKS is handed to the conformance suite to sign
  * attestations, while Keycloak trusts only the public JWKS and the CA certificate.
  */
-public final class VciAttesterKey {
+final class VciAttesterKey {
 
     static final String KID = "ct_client_attester_key";
 
-    // The attestation EKU must match ATTESTER_ATTESTATION_EKU in VciConformanceRealmConfig.
     private static final ConformanceSigningKey KEY = ConformanceSigningKey.generate(
-            VciConformanceRealmConfig.REALM, KID, "OID4VCI Conformance Attester",
-            KeyPurposeId.id_kp_emailProtection);
+            VciConformanceRealmConfig.REALM, KID, "OID4VCI Conformance Attester");
 
     private VciAttesterKey() {
     }
@@ -48,7 +45,7 @@ public final class VciAttesterKey {
         return KEY.publicJwks();
     }
 
-    public static String caCertificatePem() {
+    static String caCertificatePem() {
         return KEY.caCertificatePem();
     }
 }

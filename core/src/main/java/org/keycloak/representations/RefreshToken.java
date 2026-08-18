@@ -18,10 +18,13 @@
 package org.keycloak.representations;
 
 import org.keycloak.TokenCategory;
-import org.keycloak.json.StringOrArray;
+import org.keycloak.json.StringOrArrayDeserializer;
+import org.keycloak.json.StringOrArraySerializer;
 import org.keycloak.util.TokenUtil;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
 
 /**
@@ -35,7 +38,8 @@ public class RefreshToken extends AccessToken {
     public static final String PROVIDER = "prov";
 
     @JsonProperty(ORIGINAL_AUD)
-    @StringOrArray
+    @JsonSerialize(using = StringOrArraySerializer.class)
+    @JsonDeserialize(using = StringOrArrayDeserializer.class)
     protected String[] originalAudience;
 
     // Reference to refresh-token provider

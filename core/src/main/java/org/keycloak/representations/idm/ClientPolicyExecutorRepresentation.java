@@ -20,9 +20,8 @@ package org.keycloak.representations.idm;
 
 import java.util.Objects;
 
-import org.keycloak.json.RawJsonValue;
-
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
@@ -38,7 +37,7 @@ public class ClientPolicyExecutorRepresentation {
     @Schema(type=SchemaType.OBJECT,
             description = "Configuration settings as a JSON object",
             additionalProperties = Schema.True.class)
-    private RawJsonValue configuration;
+    private JsonNode configuration;
 
     public String getExecutorProviderId() {
         return executorProviderId;
@@ -48,11 +47,11 @@ public class ClientPolicyExecutorRepresentation {
         this.executorProviderId = providerId;
     }
 
-    public RawJsonValue getConfiguration() {
+    public JsonNode getConfiguration() {
         return configuration;
     }
 
-    public void setConfiguration(RawJsonValue configuration) {
+    public void setConfiguration(JsonNode configuration) {
         this.configuration = configuration;
     }
 

@@ -19,14 +19,16 @@ package org.keycloak.representations;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.keycloak.json.KeycloakJsonMapperFactory;
-import org.keycloak.json.StringOrArray;
+import org.keycloak.json.StringOrArrayDeserializer;
+import org.keycloak.json.StringOrArraySerializer;
+import org.keycloak.util.JsonSerialization;
 
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
 /**
  * @author pedroigor
@@ -37,7 +39,8 @@ public class UserInfo {
     @JsonProperty("iss")
     protected String issuer;
     @JsonProperty("aud")
-    @StringOrArray
+    @JsonSerialize(using = StringOrArraySerializer.class)
+    @JsonDeserialize(using = StringOrArrayDeserializer.class)
     protected String[] audience;
 
     @JsonProperty("sub")
@@ -285,12 +288,12 @@ public class UserInfo {
             return null;
         }
 
-        return KeycloakJsonMapperFactory.mapper().convertValue(value, AddressClaimSet.class);
+        return JsonSerialization.mapper.convertValue(value, AddressClaimSet.class);
     }
 
     @JsonIgnore
     public void setAddress(AddressClaimSet address) {
-        getOtherClaims().put(IDToken.ADDRESS, KeycloakJsonMapperFactory.mapper().convertValue(address, Map.class));
+        getOtherClaims().put(IDToken.ADDRESS, JsonSerialization.mapper.convertValue(address, Map.class));
     }
 
     @JsonIgnore

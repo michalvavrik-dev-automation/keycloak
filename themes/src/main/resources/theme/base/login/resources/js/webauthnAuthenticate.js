@@ -60,7 +60,7 @@ export function getAllowCredentials() {
 export function doAuthenticate(input) {
     // Check if WebAuthn is supported by this browser
     if (!window.PublicKeyCredential) {
-        returnFailure("WebAuthnUnsupportedBrowser");
+        returnFailure(input.errmsg);
         return;
     }
 

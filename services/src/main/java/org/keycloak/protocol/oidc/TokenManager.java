@@ -75,7 +75,6 @@ import org.keycloak.models.ClientScopeModel;
 import org.keycloak.models.ClientSessionContext;
 import org.keycloak.models.Constants;
 import org.keycloak.models.IdentityProviderQuery;
-import org.keycloak.models.ImpersonationSessionNote;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.OrganizationModel;
 import org.keycloak.models.ProtocolMapperModel;
@@ -139,7 +138,6 @@ import org.keycloak.tracing.TracingAttributes;
 import org.keycloak.tracing.TracingProvider;
 import org.keycloak.util.JWKSUtils;
 import org.keycloak.util.TokenUtil;
-import org.keycloak.utils.StringUtil;
 
 import org.jboss.logging.Logger;
 
@@ -148,10 +146,7 @@ import static org.keycloak.authentication.authenticators.client.AttestationBased
 import static org.keycloak.events.Details.REASON;
 import static org.keycloak.models.Constants.AUTHORIZATION_DETAILS_RESPONSE;
 import static org.keycloak.models.light.LightweightUserAdapter.isLightweightUser;
-import static org.keycloak.representations.IDToken.ACT;
 import static org.keycloak.representations.IDToken.NONCE;
-import static org.keycloak.representations.IDToken.PREFERRED_USERNAME;
-import static org.keycloak.representations.JsonWebToken.SUBJECT;
 import static org.keycloak.services.util.DPoPUtil.DPOP_JKT_TYPE;
 
 /**
@@ -188,12 +183,7 @@ public class TokenManager {
 
                 // Revoke timed out offline userSession
                 if (!AuthenticationManager.isSessionValid(realm, userSession)) {
-                    UserSessionModel offlineSession = userSession;
-                    // Revocation must persist even when the error response rolls back the main tx.
-                    KeycloakModelUtils.enlistAfterRollback(session, ctx -> {
-                        UserSessionModel us = ctx.findUserSession(offlineSession);
-                        if (us != null) new UserSessionManager(ctx.session()).revokeOfflineUserSession(us);
-                    });
+                    sessionManager.revokeOfflineUserSession(userSession);
                     throw new OAuthErrorException(OAuthErrorException.INVALID_GRANT, "Offline session not active", "Offline session not active");
                 }
 
@@ -204,16 +194,7 @@ public class TokenManager {
             // Find userSession regularly for online tokens
             userSession = session.sessions().getUserSession(realm, oldToken.getSessionState());
             if (!AuthenticationManager.isSessionValid(realm, userSession)) {
-                if (userSession != null) {
-                    UserSessionModel onlineSession = userSession;
-                    // Logout must persist even when the error response rolls back the main tx.
-                    KeycloakModelUtils.enlistAfterRollback(session, ctx -> {
-                        UserSessionModel us = ctx.findUserSession(onlineSession);
-                        if (us != null) {
-                            AuthenticationManager.backchannelLogout(ctx.session(), ctx.realm(), us, uriInfo, connection, headers, true);
-                        }
-                    });
-                }
+                AuthenticationManager.backchannelLogout(session, realm, userSession, uriInfo, connection, headers, true);
                 throw new OAuthErrorException(OAuthErrorException.INVALID_GRANT, "Session not active", "Session not active");
             }
         }
@@ -242,12 +223,7 @@ public class TokenManager {
 
         if (!AuthenticationManager.isClientSessionValid(realm, client, userSession, clientSession)) {
             logger.debug("Client session not active");
-            UserSessionModel currentSession = userSession;
-            // Removal must persist even when the error response rolls back the main tx.
-            KeycloakModelUtils.enlistAfterRollback(session, ctx -> {
-                UserSessionModel us = ctx.findUserSession(currentSession);
-                if (us != null) us.removeAuthenticatedClientSessions(Collections.singletonList(client.getId()));
-            });
+            userSession.removeAuthenticatedClientSessions(Collections.singletonList(client.getId()));
             throw new OAuthErrorException(OAuthErrorException.INVALID_GRANT, "Client session not active");
         }
 
@@ -485,7 +461,6 @@ public class TokenManager {
                                                ClientSessionContext clientSessionCtx, boolean isOffline) {
         AccessToken token = initToken(session, realm, client, user, userSession, clientSessionCtx, isOffline);
         token = transformAccessToken(session, token, userSession, clientSessionCtx);
-        setActClaimFromImpersonator(token, userSession);
         return token;
     }
 
@@ -1119,20 +1094,6 @@ public class TokenManager {
         return token;
     }
 
-    // Sets the "act" claim (RFC 8693 Section 4.1) so downstream resource servers can identify the impersonator for audit purposes
-    private static void setActClaimFromImpersonator(JsonWebToken token, UserSessionModel userSession) {
-        String impersonatorId = userSession.getNote(ImpersonationSessionNote.IMPERSONATOR_ID.toString());
-        if (StringUtil.isNotBlank(impersonatorId)) {
-            Map<String, Object> act = new HashMap<>();
-            act.put(SUBJECT, impersonatorId);
-            String impersonatorUsername = userSession.getNote(ImpersonationSessionNote.IMPERSONATOR_USERNAME.toString());
-            if (StringUtil.isNotBlank(impersonatorUsername)) {
-                act.put(PREFERRED_USERNAME, impersonatorUsername);
-            }
-            token.getOtherClaims().put(ACT, act);
-        }
-    }
-
     private Long getTokenExpiration(RealmModel realm, ClientModel client, UserSessionModel userSession,
         AuthenticatedClientSessionModel clientSession, boolean offlineTokenRequested) {
         boolean implicitFlow = false;
@@ -1406,7 +1367,6 @@ public class TokenManager {
             if (isIdTokenAsDetachedSignature == false) {
                 idToken = tokenManager.transformIDToken(session, idToken, userSession, clientSessionCtx);
             }
-            setActClaimFromImpersonator(idToken, userSession);
             return this;
         }
 

@@ -26,7 +26,7 @@
 
     <fileSets>
         <fileSet>
-            <directory>target/reports/apidocs</directory>
+            <directory>target/site/apidocs</directory>
             <outputDirectory>javadocs</outputDirectory>
         </fileSet>
         <fileSet>

@@ -65,12 +65,12 @@ public final class LDAPContextManager implements AutoCloseable {
         return new LDAPContextManager(session, connectionProperties, requestTimer);
     }
 
-    private void recordLdapRequest(boolean success, long startTimeNanos, String error) {
+    private void recordLdapRequest(boolean success, long startTimeNanos) {
         if (requestTimer == null) {
             return;
         }
         long durationNanos = System.nanoTime() - startTimeNanos;
-        requestTimer.withTags("operation", "connect", "outcome", success ? "success" : "error", "error", error != null ? error : "")
+        requestTimer.withTags("operation", "connect", "outcome", success ? "success" : "error")
                 .record(durationNanos, TimeUnit.NANOSECONDS);
     }
 
@@ -81,7 +81,6 @@ public final class LDAPContextManager implements AutoCloseable {
 
         long startTimeNanos = System.nanoTime();
         boolean success = false;
-        String errorName = null;
 
         try {
             Hashtable<Object, Object> connProp = getNonAuthConnectionProperties(ldapConfig);
@@ -117,12 +116,11 @@ public final class LDAPContextManager implements AutoCloseable {
                 setAdminConnectionAuthProperties(ldapContext);
             }
             success = true;
-        } catch (NamingException | RuntimeException e) {
-            errorName = e.getClass().getSimpleName();
+        } catch (NamingException e) {
             tracing.error(e);
             throw e;
         } finally {
-            recordLdapRequest(success, startTimeNanos, errorName);
+            recordLdapRequest(success, startTimeNanos);
             tracing.endSpan();
         }
 

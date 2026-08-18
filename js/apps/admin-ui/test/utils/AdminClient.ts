@@ -11,23 +11,17 @@ import type { RoleMappingPayload } from "@keycloak/keycloak-admin-client/lib/def
 import type { UserProfileConfig } from "@keycloak/keycloak-admin-client/lib/defs/userProfileMetadata.js";
 import type UserRepresentation from "@keycloak/keycloak-admin-client/lib/defs/userRepresentation.js";
 import type { Credentials } from "@keycloak/keycloak-admin-client/lib/utils/auth.js";
-import {
-  ADMIN_PASSWORD,
-  ADMIN_USER,
-  DEFAULT_REALM,
-  SERVER_URL,
-} from "./constants.ts";
 
 class AdminClient {
   readonly #client = new KeycloakAdminClient({
-    baseUrl: SERVER_URL,
-    realmName: DEFAULT_REALM,
+    baseUrl: "http://localhost:8080",
+    realmName: "master",
   });
 
   #login() {
     return this.#client.auth({
-      username: ADMIN_USER,
-      password: ADMIN_PASSWORD,
+      username: "admin",
+      password: "admin",
       grantType: "password",
       clientId: "admin-cli",
     });
@@ -79,14 +73,10 @@ class AdminClient {
     ).at(0);
   }
 
-  async deleteClient(
-    clientName: string,
-    realmName: string = this.#client.realmName,
-  ) {
-    const client = await this.getClient(clientName, realmName);
+  async deleteClient(clientName: string) {
+    const client = await this.getClient(clientName);
     if (client) {
-      await this.#login();
-      await this.#client.clients.del({ id: client.id!, realm: realmName });
+      await this.#client.clients.del({ id: client.id! });
     }
   }
 
@@ -113,11 +103,11 @@ class AdminClient {
     return createdGroups;
   }
 
-  async deleteGroups(realm: string = this.#client.realmName) {
+  async deleteGroups() {
     await this.#login();
-    const groups = await this.#client.groups.find({ realm });
+    const groups = await this.#client.groups.find();
     for (const group of groups) {
-      await this.#client.groups.del({ id: group.id!, realm });
+      await this.#client.groups.del({ id: group.id! });
     }
   }
 
@@ -347,25 +337,6 @@ class AdminClient {
       displayName: idpDisplayName,
       alias: alias,
     });
-  }
-
-  async isFeatureEnabled(
-    featureName: string,
-    realm: string = this.#client.realmName,
-  ): Promise<boolean> {
-    await this.#login();
-    const features = (await this.#client.serverInfo.find({ realm })).features;
-    const normalizeServerFeatureName = (name?: string) =>
-      name?.replace(/_V\d+$/, "");
-
-    return (
-      features?.some(
-        (feature) =>
-          feature.enabled &&
-          (feature.name === featureName ||
-            normalizeServerFeatureName(feature.name) === featureName),
-      ) ?? false
-    );
   }
 
   async deleteIdentityProvider(idpAlias: string) {

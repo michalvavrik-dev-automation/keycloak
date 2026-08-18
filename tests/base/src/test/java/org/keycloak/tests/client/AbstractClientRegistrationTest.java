@@ -45,9 +45,6 @@ import org.junit.jupiter.api.BeforeEach;
  */
 public abstract class AbstractClientRegistrationTest {
 
-    protected static final String CLIENT_ID = "test-client";
-    protected static final String CLIENT_SECRET = "test-client-secret";
-
     @InjectRealm(config = ClientRegistrationRealmConfig.class)
     ManagedRealm managedRealm;
 
@@ -68,14 +65,6 @@ public abstract class AbstractClientRegistrationTest {
     @BeforeEach
     public void before() throws Exception {
         reg = oauth.clientRegistration();
-    }
-
-    protected ClientRepresentation buildClient() {
-        ClientRepresentation client = new ClientRepresentation();
-        client.setClientId(CLIENT_ID);
-        client.setSecret(CLIENT_SECRET);
-
-        return client;
     }
 
     public ClientRepresentation createClient(ClientRepresentation client) throws ClientRegistrationException {

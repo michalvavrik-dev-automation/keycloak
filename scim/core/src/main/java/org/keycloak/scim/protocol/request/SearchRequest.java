@@ -3,11 +3,6 @@ package org.keycloak.scim.protocol.request;
 import java.util.List;
 import java.util.Set;
 
-import org.keycloak.scim.filter.FilterUtils;
-import org.keycloak.scim.filter.ScimFilterParser;
-import org.keycloak.utils.StringUtil;
-
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
@@ -42,9 +37,6 @@ public class SearchRequest {
     @JsonProperty("count")
     private Integer count;
 
-    @JsonIgnore
-    private transient ScimFilterParser.FilterContext filterContext;
-
     // Getters and setters
 
     public Set<String> getSchemas() {
@@ -77,15 +69,6 @@ public class SearchRequest {
 
     public void setFilter(String filter) {
         this.filter = filter;
-        this.filterContext = null;
-    }
-
-    @JsonIgnore
-    public ScimFilterParser.FilterContext getFilterContext() {
-        if (filterContext == null && StringUtil.isNotBlank(filter)) {
-            filterContext = FilterUtils.parseFilter(filter);
-        }
-        return filterContext;
     }
 
     public String getSortBy() {

@@ -38,7 +38,6 @@ import org.keycloak.jose.jwk.JWKParser;
 import org.keycloak.jose.jwk.OKPPublicJWK;
 import org.keycloak.jose.jwk.RSAPublicJWK;
 import org.keycloak.jose.jws.crypto.HashUtils;
-import org.keycloak.json.KeycloakJsonMapperFactory;
 
 import org.jboss.logging.Logger;
 
@@ -171,7 +170,7 @@ public class JWKSUtils {
                 members.put(member, key.getOtherClaim(member, String.class));
             }
 
-            byte[] bytes = KeycloakJsonMapperFactory.mapper().writeValueAsBytes(members);
+            byte[] bytes = JsonSerialization.writeValueAsBytes(members);
             byte[] hash = HashUtils.hash(hashAlg, bytes);
             return Base64Url.encode(hash);
         } catch (IOException ex) {

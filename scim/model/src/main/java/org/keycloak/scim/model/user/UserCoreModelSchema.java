@@ -57,14 +57,14 @@ public final class UserCoreModelSchema extends AbstractUserModelSchema {
 
         attributes.addAll(Attribute.<UserModel, User>simple("userName")
                 .required()
-                .storedLowerCase()
+                .notCaseExact()
                 .serverUnique()
                 .modelAttributeResolver(this::createModelAttributeResolver)
                 .withModelSetter(UserModel::setSingleAttribute)
                 .build());
         attributes.addAll(Attribute.<UserModel, User>complex("emails", Email.class)
                 .modelAttributeResolver(this::createModelAttributeResolver)
-                .storedLowerCase()
+                .notCaseExact()
                 .globalUnique()
                 .multivalued()
                 .withModelSetter((TriConsumer<UserModel, String, Set<Email>>) (model, name, values) -> {
@@ -106,7 +106,6 @@ public final class UserCoreModelSchema extends AbstractUserModelSchema {
                 .withModelSetter(UserModel::setSingleAttribute)
                 .build());
         attributes.addAll(Attribute.<UserModel, User>simple("externalId")
-                .caseExact()
                 .modelAttributeResolver(this::createModelAttributeResolver)
                 .withModelSetter(UserModel::setSingleAttribute)
                 .build());
@@ -256,7 +255,7 @@ public final class UserCoreModelSchema extends AbstractUserModelSchema {
     }
 
     private static void checkGroupMembershipPermission(Permissions permissions, GroupModel group) {
-        if (isOrganizationGroup(group)) {
+        if (GroupModel.Type.ORGANIZATION.equals(group.getType()) && group.getOrganization() != null) {
             throw new ModelValidationException("Cannot access organization related group via non Organization API.");
         }
         if (permissions.isAdminGroup(group)) {

@@ -130,7 +130,7 @@ test.describe.serial("JWT Authorization Grant identity provider test", () => {
 
     await expect(
       page.getByTestId("config.publicKeySignatureVerifier"),
-    ).toHaveValue(/{\s*"keys"\s*:\s*/);
+    ).toHaveValue(/{ "keys" : /);
 
     await clickSaveButton(page);
     await assertNotificationMessage(page, "Provider successfully updated");

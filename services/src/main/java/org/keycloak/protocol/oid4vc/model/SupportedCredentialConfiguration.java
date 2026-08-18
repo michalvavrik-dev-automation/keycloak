@@ -104,8 +104,7 @@ public class SupportedCredentialConfiguration {
         SupportedCredentialConfiguration credentialConfiguration = new SupportedCredentialConfiguration();
 
         String credentialConfigurationId = Optional.ofNullable(credentialScope.getCredentialConfigurationId())
-                .orElseThrow(() -> new IllegalStateException("No credential configuration ID in client scope: "
-                        + credentialScope.getName()));
+                                                   .orElse(credentialScope.getName());
         credentialConfiguration.setId(credentialConfigurationId);
 
         credentialConfiguration.setScope(credentialScope.getName());

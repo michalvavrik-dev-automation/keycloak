@@ -137,9 +137,7 @@ public class VerifyEmailActionTokenHandler extends AbstractActionTokenHandler<Ve
             // Email verified in other browser than the one originally started. Removing original authSession. This authenticationSession would be finished after requiredAction
             AuthenticationSessionCompoundId origAuthSession = AuthenticationSessionCompoundId.encoded(token.getCompoundOriginalAuthenticationSessionId());
             RootAuthenticationSessionModel rootAuthSession = session.authenticationSessions().getRootAuthenticationSession(realm, origAuthSession.getRootSessionId());
-            if (rootAuthSession != null) {
-                session.authenticationSessions().removeRootAuthenticationSession(realm, rootAuthSession);
-            }
+            session.authenticationSessions().removeRootAuthenticationSession(realm, rootAuthSession);
 
             if (nextAction == null) {
                 AuthenticationSessionManager asm = new AuthenticationSessionManager(session);

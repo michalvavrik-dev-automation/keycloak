@@ -22,9 +22,7 @@ export const convertToOrg = (
   org: OrganizationFormType,
 ): OrganizationRepresentation => ({
   ...org,
-  domains: org.domains
-    ?.filter((d) => d.trim() !== "")
-    .map((d) => ({ name: d.trim(), verified: false })),
+  domains: org.domains?.map((d) => ({ name: d, verified: false })),
   attributes: keyValueToArray(org.attributes),
 });
 

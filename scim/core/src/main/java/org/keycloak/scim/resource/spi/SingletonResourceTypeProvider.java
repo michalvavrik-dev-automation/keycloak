@@ -42,7 +42,7 @@ public interface SingletonResourceTypeProvider<R extends ResourceTypeRepresentat
     }
 
     @Override
-    default Long count(SearchRequest searchRequest, int resourceSize) {
+    default Long count(SearchRequest searchRequest) {
         return 1L;
     }
 

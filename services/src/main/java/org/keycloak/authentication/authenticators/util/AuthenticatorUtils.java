@@ -35,7 +35,6 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.services.managers.BruteForceProtector;
-import org.keycloak.services.validation.Validation;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.util.JsonSerialization;
 
@@ -83,18 +82,6 @@ public final class AuthenticatorUtils {
         }
         int iterations = passwordPolicy != null ? passwordPolicy.getHashIterations() : -1;
         provider.encodedCredential("SlightlyLongerDummyPassword", iterations);
-    }
-
-    /**
-     * Returns {@code true} if {@code username} exceeds the maximum length allowed by the
-     * USER_ENTITY table column (VARCHAR(255)). Callers should invoke {@link #dummyHash(AuthenticationFlowContext)}
-     * and return their appropriate failure response when this returns {@code true}.
-     *
-     * @param username the trimmed username string to test; may be {@code null}
-     * @return true if the username is too long to be stored
-     */
-    public static boolean isUsernameTooLong(String username) {
-        return username != null && username.length() > Validation.MAX_USERNAME_LENGTH;
     }
 
     /**

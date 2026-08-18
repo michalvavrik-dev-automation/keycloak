@@ -30,11 +30,4 @@ public interface TrustMaterialIdentityProvider<C extends IdentityProviderModel> 
 
     Stream<JWK> resolveKeys(TrustMaterialRequest request);
 
-    /**
-     * Resolves X.509 trust anchors and policy. Providers that only expose JWKs do not need to implement this method.
-     */
-    default Stream<X509TrustMaterial> resolveX509Trust(TrustMaterialRequest request) {
-        return Stream.empty();
-    }
-
 }

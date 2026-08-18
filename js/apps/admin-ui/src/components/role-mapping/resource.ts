@@ -149,20 +149,10 @@ export const findUsers = (
     query as Record<string, string>,
   );
 
-export type UsedByClientRef = {
-  id?: string | null;
-  clientId: string;
-};
-
-export type UsedByReference = {
-  id?: string | null;
-  label: string;
-};
-
 export const fetchUsedBy = (
   adminClient: KeycloakAdminClient,
   query: PaginatingQuery,
-): Promise<UsedByReference[]> =>
+): Promise<string[]> =>
   fetchEndpoint(adminClient, {
     ...query,
     endpoint: "authentication-management",

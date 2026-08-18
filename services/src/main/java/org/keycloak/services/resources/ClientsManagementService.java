@@ -117,8 +117,7 @@ public class ClientsManagementService {
         try {
             client.registerNode(nodeHost, Time.currentTime());
         } catch (RuntimeException e) {
-            event.detail(Details.REASON, e.getMessage());
-            event.error(Errors.GENERIC);
+            event.error(e.getMessage());
             throw e;
         }
 

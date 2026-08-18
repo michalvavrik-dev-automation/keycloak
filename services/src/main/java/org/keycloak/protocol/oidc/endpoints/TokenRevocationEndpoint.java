@@ -45,7 +45,6 @@ import org.keycloak.protocol.oidc.refresh.DefaultRefreshTokenProvider;
 import org.keycloak.protocol.oidc.refresh.DefaultRefreshTokenProviderFactory;
 import org.keycloak.protocol.oidc.refresh.RefreshTokenProvider;
 import org.keycloak.protocol.oidc.utils.AuthorizeClientUtil;
-import org.keycloak.protocol.oidc.utils.ContentTypeValidationUtil;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.RefreshToken;
 import org.keycloak.services.CorsErrorResponseException;
@@ -88,8 +87,6 @@ public class TokenRevocationEndpoint {
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     public Response revoke() {
-        ContentTypeValidationUtil.requireValidContentType(request.getHttpHeaders(), MediaType.APPLICATION_FORM_URLENCODED_TYPE);
-
         event.event(EventType.REVOKE_GRANT);
 
         cors = Cors.builder().auth().allowedMethods("POST").auth().exposedHeaders(Cors.ACCESS_CONTROL_ALLOW_METHODS);

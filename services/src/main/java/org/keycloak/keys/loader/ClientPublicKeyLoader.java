@@ -81,7 +81,7 @@ public class ClientPublicKeyLoader implements PublicKeyLoader {
             return JWKSUtils.getKeyWrappersForUse(jwks, keyUse);
         } else if (keyUse == JWK.Use.SIG) {
             try {
-                CertificateRepresentation certInfo = CertificateInfoHelper.getCertificateFromClient(client, JWTClientAuthenticator.ATTR_PREFIX, session.getKeycloakSessionFactory());
+                CertificateRepresentation certInfo = CertificateInfoHelper.getCertificateFromClient(client, JWTClientAuthenticator.ATTR_PREFIX);
                 KeyWrapper publicKey = getSignatureValidationKey(certInfo);
                 return new PublicKeysWrapper(Collections.singletonList(publicKey));
             } catch (ModelException me) {

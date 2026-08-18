@@ -51,7 +51,6 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.organization.OrganizationProvider;
 import org.keycloak.organization.protocol.mappers.oidc.OrganizationScope;
-import org.keycloak.representations.idm.IdentityProviderRepresentation;
 import org.keycloak.services.ErrorResponse;
 import org.keycloak.services.Urls;
 import org.keycloak.services.resources.admin.fgap.AdminPermissionEvaluator;
@@ -127,13 +126,6 @@ public class Organizations {
         }
 
         return brokers;
-    }
-
-    public static void stripOrganizationId(IdentityProviderRepresentation representation) {
-        representation.setOrganizationId(null);
-        if (representation.getConfig() != null) {
-            representation.getConfig().remove(OrganizationModel.ORGANIZATION_ATTRIBUTE);
-        }
     }
 
     public static Consumer<GroupModel> removeGroup(KeycloakSession session, RealmModel realm) {
@@ -215,7 +207,7 @@ public class Organizations {
     }
 
     public static void validateDomain(String rawDomain) {
-        if (isBlank(rawDomain)) {
+        if (rawDomain == null) {
             return;
         }
 

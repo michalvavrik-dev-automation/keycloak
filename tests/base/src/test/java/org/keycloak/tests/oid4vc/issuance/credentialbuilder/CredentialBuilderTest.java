@@ -22,34 +22,25 @@ import org.keycloak.crypto.AsymmetricSignatureVerifierContext;
 import org.keycloak.crypto.KeyWrapper;
 import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.crypto.SignatureVerifierContext;
-import org.keycloak.tests.oid4vc.issuance.signing.OID4VCTest;
+import org.keycloak.tests.oid4vc.OID4VCIssuerTestBase;
 
-public abstract class CredentialBuilderTest extends OID4VCTest {
+/**
+ * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
+ */
+public abstract class CredentialBuilderTest extends OID4VCIssuerTestBase {
 
-    private static final KeyWrapper KEY_WRAPPER = createRsaKey();
+    private final KeyWrapper keyWrapper;
 
-    protected static SignatureSignerContext exampleSigner() {
-        return new AsymmetricSignatureSignerContext(KEY_WRAPPER);
+    CredentialBuilderTest() {
+        keyWrapper = getRsaKey_Default();
     }
 
-    protected static SignatureVerifierContext exampleVerifier() {
-        return new AsymmetricSignatureVerifierContext(KEY_WRAPPER);
+    protected SignatureSignerContext exampleSigner() {
+        return new AsymmetricSignatureSignerContext(keyWrapper);
     }
 
-    private static KeyWrapper createRsaKey() {
-        try {
-            var kpg = java.security.KeyPairGenerator.getInstance("RSA");
-            kpg.initialize(2048);
-            var kp = kpg.generateKeyPair();
-            KeyWrapper kw = new KeyWrapper();
-            kw.setPrivateKey(kp.getPrivate());
-            kw.setPublicKey(kp.getPublic());
-            kw.setKid(java.util.UUID.randomUUID().toString());
-            kw.setType("RSA");
-            kw.setAlgorithm("RS256");
-            return kw;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+    protected SignatureVerifierContext exampleVerifier() {
+        return new AsymmetricSignatureVerifierContext(keyWrapper);
     }
+
 }

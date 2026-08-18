@@ -42,7 +42,7 @@ public abstract class AbstractProofValidator implements ProofValidator {
         return signatureProvider.verifier(keyWrapper);
     }
 
-    private KeyWrapper getKeyWrapper(JWK jwk, String algorithm) throws VerificationException {
+    private KeyWrapper getKeyWrapper(JWK jwk, String algorithm) {
         KeyWrapper keyWrapper = new KeyWrapper();
         keyWrapper.setType(jwk.getKeyType());
 
@@ -56,11 +56,7 @@ public abstract class AbstractProofValidator implements ProofValidator {
         }
 
         JWKParser parser = JWKParser.create(jwk);
-        try {
-            keyWrapper.setPublicKey(parser.toPublicKey());
-        } catch (RuntimeException e) {
-            throw new VerificationException("Failed to parse JWK into a public key", e);
-        }
+        keyWrapper.setPublicKey(parser.toPublicKey());
         return keyWrapper;
     }
 }

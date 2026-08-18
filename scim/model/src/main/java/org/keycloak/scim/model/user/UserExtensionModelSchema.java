@@ -71,14 +71,13 @@ public class UserExtensionModelSchema extends AbstractUserModelSchema {
 
         Set<String> names = new HashSet<>();
         UserProfile profile = getUserProfile();
-        Attributes attributes = profile.getAttributes();
 
-        for (String name : attributes.getReadable().keySet()) {
+        for (String name : profile.getAttributes().nameSet()) {
             if (isRootAttribute(name)) {
                 continue;
             }
 
-            AttributeMetadata metadata = attributes.getMetadata(name);
+            AttributeMetadata metadata = profile.getAttributes().getMetadata(name);
 
             if (metadata == null) {
                 continue;
@@ -142,7 +141,7 @@ public class UserExtensionModelSchema extends AbstractUserModelSchema {
                     UserProfile profile = getUserProfile();
                     Attributes attributes = profile.getAttributes();
 
-                    for (String modelName : attributes.getReadable().keySet()) {
+                    for (String modelName : attributes.nameSet()) {
                         AttributeMetadata metadata = attributes.getMetadata(modelName);
 
                         if (metadata == null) {
@@ -169,9 +168,6 @@ public class UserExtensionModelSchema extends AbstractUserModelSchema {
                         return;
                     }
                     if (getAttributeMapperByModelAttribute(name) == null) {
-                        return;
-                    }
-                    if (getUserProfile().getAttributes().isReadOnly(name)) {
                         return;
                     }
                     if (value == null) {

@@ -114,31 +114,12 @@ public class OIDCClientSecretConfigWrapper extends AbstractClientConfigWrapper {
     }
 
     /**
-     * Returns the rotated client secret value without vault resolution.
-     * Vault expressions should not be resolved when returning secrets through the Admin API
-     * to avoid leaking sensitive vault-backed values.
+     * Returns the rotated client secret value resolved through the vault.
      * Use {@link #hasRotatedSecret()} to check whether a rotated secret is effectively present before calling this method.
      */
     public String getClientRotatedSecret(KeycloakSession session) {
-        return getClientRotatedSecret(session, false);
-    }
-
-    /**
-     * Returns the rotated client secret value, optionally resolving vault expressions.
-     * Vault resolution should only be enabled for authentication validation, never for
-     * returning values through the Admin API to avoid leaking sensitive vault-backed values.
-     * Use {@link #hasRotatedSecret()} to check whether a rotated secret is effectively present before calling this method.
-     *
-     * @param session the keycloak session
-     * @param resolveVault if {@code true}, vault expressions like {@code ${vault.key}} are resolved to their actual values;
-     *                     if {@code false}, the raw stored value (potentially a vault placeholder) is returned
-     */
-    public String getClientRotatedSecret(KeycloakSession session, boolean resolveVault) {
         String secret = getAttribute(CLIENT_ROTATED_SECRET);
-        if (resolveVault && session != null) {
-            return session.vault().getStringSecret(secret).get().orElse(secret);
-        }
-        return secret;
+        return session == null ? getAttribute(CLIENT_ROTATED_SECRET) : session.vault().getStringSecret(secret).get().orElse(secret);
     }
 
     public void setClientRotatedSecret(String secret) {
@@ -251,7 +232,7 @@ public class OIDCClientSecretConfigWrapper extends AbstractClientConfigWrapper {
             return false;
         }
 
-        return MessageDigest.isEqual(secret.getBytes(), getClientRotatedSecret(session, true).getBytes());
+        return MessageDigest.isEqual(secret.getBytes(), getClientRotatedSecret(session).getBytes());
 
     }
 
@@ -296,7 +277,7 @@ public class OIDCClientSecretConfigWrapper extends AbstractClientConfigWrapper {
 
         @Override
         public String getSecret() {
-            return OIDCClientSecretConfigWrapper.this.getClientRotatedSecret(session, true);
+            return OIDCClientSecretConfigWrapper.this.getClientRotatedSecret(session);
         }
 
     }

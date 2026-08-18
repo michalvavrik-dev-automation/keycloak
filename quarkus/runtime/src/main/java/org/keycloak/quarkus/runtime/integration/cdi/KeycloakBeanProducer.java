@@ -27,11 +27,14 @@ import org.keycloak.quarkus.runtime.integration.QuarkusKeycloakSessionFactory;
 import org.keycloak.quarkus.runtime.transaction.TransactionalSessionHandler;
 
 import io.quarkus.arc.Unremovable;
+import org.jboss.logging.Logger;
 
 @ApplicationScoped
 @Unremovable
 public class KeycloakBeanProducer implements TransactionalSessionHandler {
     
+    private static final Logger logger = Logger.getLogger(KeycloakBeanProducer.class);
+
     @Inject
     QuarkusKeycloakSessionFactory factory;
 
@@ -44,7 +47,9 @@ public class KeycloakBeanProducer implements TransactionalSessionHandler {
     }
 
     void dispose(@Disposes KeycloakSession session) {
-        // ensures the session is closed if the CloseSessionFilter did not run
+        if (!session.isClosed()) {
+            logger.warn("Proactive closing of the session was missed - refinements are needed to TransactionSessionHandler related logic");
+        }
         close(session);
     }
 }

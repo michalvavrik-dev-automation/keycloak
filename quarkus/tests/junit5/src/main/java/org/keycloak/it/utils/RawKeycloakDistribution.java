@@ -221,9 +221,7 @@ public final class RawKeycloakDistribution implements KeycloakDistribution {
             exitCode = keycloak.exitValue();
         }
 
-        if (!shutdownOutputExecutor()) {
-            throw new AssertionError("Did not get complete output");
-        }
+        shutdownOutputExecutor();
     }
 
     private void destroyDescendantsOnWindows(Process parent, boolean force) {
@@ -308,18 +306,17 @@ public final class RawKeycloakDistribution implements KeycloakDistribution {
         readOutput(keycloak, outputConsumer, outputExecutor);
     }
 
-    private boolean shutdownOutputExecutor() {
+    private void shutdownOutputExecutor() {
         if (outputExecutor != null) {
             outputExecutor.shutdown();
             try {
-                return outputExecutor.awaitTermination(30, TimeUnit.SECONDS);
+                outputExecutor.awaitTermination(30, TimeUnit.SECONDS);
             } catch (InterruptedException cause) {
                 throw new RuntimeException("Failed to terminate output executor", cause);
             } finally {
                 outputExecutor = null;
             }
         }
-        return true;
     }
 
     private void resetForNextRun() {
@@ -428,12 +425,12 @@ public final class RawKeycloakDistribution implements KeycloakDistribution {
     }
 
     private CompletableFuture<Void> readOutput(Process process, OutputConsumer outputConsumer, Executor ex) {
-        var inputFuture = CompletableFuture.runAsync(() -> readOutput(process.inputReader(StandardCharsets.UTF_8), outputConsumer::onStdOut), ex);
-        var errorFuture = CompletableFuture.runAsync(() -> readOutput(process.errorReader(StandardCharsets.UTF_8), outputConsumer::onErrOut), ex);
+        var inputFuture = CompletableFuture.runAsync(() -> readOutput(process, process.inputReader(StandardCharsets.UTF_8), outputConsumer::onStdOut), ex);
+        var errorFuture = CompletableFuture.runAsync(() -> readOutput(process, process.errorReader(StandardCharsets.UTF_8), outputConsumer::onErrOut), ex);
         return CompletableFuture.allOf(inputFuture, errorFuture);
     }
 
-    private void readOutput(BufferedReader reader, Consumer<String> outputConsumer) {
+    private void readOutput(Process process, BufferedReader reader, Consumer<String> outputConsumer) {
         try (reader) {
             String line;
 

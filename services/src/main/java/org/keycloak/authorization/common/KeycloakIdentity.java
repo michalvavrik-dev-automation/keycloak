@@ -37,11 +37,9 @@ import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientSessionContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
-import org.keycloak.models.RoleModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.models.UserSessionProvider;
-import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.protocol.oidc.TokenManager;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.AccessToken.Access;
@@ -68,7 +66,6 @@ public class KeycloakIdentity implements Identity {
     protected final Attributes attributes;
     private final boolean resourceServer;
     private final String id;
-    private UserModel user;
 
     public KeycloakIdentity(KeycloakSession keycloakSession) {
         this(Tokens.getAccessToken(keycloakSession), keycloakSession);
@@ -157,12 +154,6 @@ public class KeycloakIdentity implements Identity {
 
             ClientSessionContext clientSessionCtx = DefaultClientSessionContext.fromClientSessionScopeParameter(clientSessionModel, keycloakSession);
             this.accessToken = new TokenManager().createClientAccessToken(keycloakSession, realm, client, userSession.getUser(), userSession, clientSessionCtx, clientSessionCtx.isOfflineTokenRequested());
-            UserModel tokenUser = userSession.getUser();
-            removeTransientAdminRoles(realm, null, tokenUser, this.accessToken.getRealmAccess());
-            Map<String, Access> resourceAccess = this.accessToken.getResourceAccess();
-            if (resourceAccess != null) {
-                resourceAccess.forEach((cId, access) -> removeTransientAdminRoles(realm, cId, tokenUser, access));
-            }
         }
 
         ClientModel clientModel = getTargetClient();
@@ -188,10 +179,10 @@ public class KeycloakIdentity implements Identity {
     }
 
     public KeycloakIdentity(AccessToken accessToken, KeycloakSession keycloakSession) {
-        this(accessToken, keycloakSession, keycloakSession.getContext().getRealm(), false);
+        this(accessToken, keycloakSession, keycloakSession.getContext().getRealm());
     }
 
-    public KeycloakIdentity(AccessToken accessToken, KeycloakSession keycloakSession, RealmModel realm, boolean ignoreTokenRoles) {
+    public KeycloakIdentity(AccessToken accessToken, KeycloakSession keycloakSession, RealmModel realm) {
         if (accessToken == null) {
             throw new ErrorResponseException("invalid_bearer_token", "Could not obtain bearer access_token from request.", Status.FORBIDDEN);
         }
@@ -251,11 +242,7 @@ public class KeycloakIdentity implements Identity {
                 throw new IllegalArgumentException("User from token not found");
             }
 
-            if (!ignoreTokenRoles) {
-                addRolesAsAttributes(accessToken, realm, user, attributes);
-            } else {
-                this.user = user;
-            }
+            addRolesAsAttributes(accessToken, realm, user, attributes);
 
             if (clientUser != null && user.getId().equals(clientUser.getId())) {
                 AuthorizationProvider provider = keycloakSession.getProvider(AuthorizationProvider.class);
@@ -288,36 +275,6 @@ public class KeycloakIdentity implements Identity {
         return this.attributes;
     }
 
-    @Override
-    public boolean hasClientRole(String clientId, String roleName) {
-        if (user == null) {
-            return Identity.super.hasClientRole(clientId, roleName);
-        }
-
-        RoleModel role = KeycloakModelUtils.getRoleByName(realm, clientId, roleName);
-
-        if (role == null) {
-            return false;
-        }
-
-        return user.hasRole(role);
-    }
-
-    @Override
-    public boolean hasRealmRole(String roleName) {
-        if (user == null) {
-            return Identity.super.hasRealmRole(roleName);
-        }
-
-        RoleModel role = KeycloakModelUtils.getRoleByName(realm, null, roleName);
-
-        if (role == null) {
-            return false;
-        }
-
-        return user.hasRole(role);
-    }
-
     public AccessToken getAccessToken() {
         return this.accessToken;
     }
@@ -340,9 +297,6 @@ public class KeycloakIdentity implements Identity {
     }
 
     private UserModel getUserFromToken() {
-        if (user != null) {
-            return user;
-        }
         if (accessToken.getSessionState() == null) {
             return TokenManager.lookupUserFromStatelessToken(keycloakSession, realm, accessToken);
         }
@@ -369,6 +323,7 @@ public class KeycloakIdentity implements Identity {
         Access realmAccess = accessToken.getRealmAccess();
 
         if (realmAccess != null) {
+            removeTransientAdminRoles(realm, null, user, realmAccess);
             attributes.put("kc.realm.roles", realmAccess.getRoles());
         }
 
@@ -376,6 +331,7 @@ public class KeycloakIdentity implements Identity {
 
         if (resourceAccess != null) {
             resourceAccess.forEach((clientId, access) -> {
+                removeTransientAdminRoles(realm, clientId, user, access);
                 attributes.put("kc.client." + clientId + ".roles", access.getRoles());
             });
         }

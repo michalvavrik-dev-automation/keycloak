@@ -51,7 +51,6 @@ import org.keycloak.protocol.oidc.grants.ciba.clientpolicy.context.BackchannelAu
 import org.keycloak.protocol.oidc.grants.ciba.endpoints.request.BackchannelAuthenticationEndpointRequest;
 import org.keycloak.protocol.oidc.grants.ciba.endpoints.request.BackchannelAuthenticationEndpointRequestParserProcessor;
 import org.keycloak.protocol.oidc.grants.ciba.resolvers.CIBALoginUserResolver;
-import org.keycloak.protocol.oidc.utils.ContentTypeValidationUtil;
 import org.keycloak.representations.idm.OAuth2ErrorRepresentation;
 import org.keycloak.services.ErrorResponseException;
 import org.keycloak.services.clientpolicy.ClientPolicyException;
@@ -84,8 +83,6 @@ public class BackchannelAuthenticationEndpoint extends AbstractCibaEndpoint {
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     @Produces(MediaType.APPLICATION_JSON)
     public Response processGrantRequest() {
-        ContentTypeValidationUtil.requireValidContentType(session.getContext().getHttpRequest().getHttpHeaders(), MediaType.APPLICATION_FORM_URLENCODED_TYPE);
-
         HttpRequest httpRequest = session.getContext().getHttpRequest();
         CIBAAuthenticationRequest request = authorizeClient(httpRequest.getDecodedFormParameters());
 

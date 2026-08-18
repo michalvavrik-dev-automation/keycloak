@@ -103,6 +103,7 @@ public class KeycloakMain implements QuarkusApplication {
         PersistedConfigSource.getInstance().getConfigValueProperties().clear();
         Profile.reset();
         Configuration.resetConfig();
+        ExecutionExceptionHandler.resetExceptionTransformers();
     }
 
     public static void main(String[] args, Picocli picocli) {

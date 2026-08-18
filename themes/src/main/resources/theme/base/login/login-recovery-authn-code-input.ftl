@@ -17,7 +17,7 @@
                            autocomplete="one-time-code"
                            type="text"
                            class="${properties.kcInputClass!}"
-                           inputmode="text"
+                           inputmode="numeric"
                            autofocus
                            dir="ltr"/>
 

@@ -61,7 +61,6 @@ import org.keycloak.models.UserSessionModel;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.models.utils.ModelToRepresentation;
 import org.keycloak.models.utils.RepresentationToModel;
-import org.keycloak.models.utils.StripSecretsUtils;
 import org.keycloak.protocol.ClientInstallationProvider;
 import org.keycloak.protocol.LoginProtocol;
 import org.keycloak.protocol.LoginProtocolFactory;
@@ -158,6 +157,7 @@ public class ClientResource {
         auth.clients().requireConfigure(client);
 
         try {
+            session.setAttribute(ClientSecretConstants.CLIENT_SECRET_ROTATION_ENABLED,Boolean.FALSE);
             session.clientPolicy().triggerOnEvent(new AdminClientUpdateContext(rep, client, auth.adminAuth()));
 
             updateClientFromRep(rep, client, session);
@@ -172,10 +172,11 @@ public class ClientResource {
 
             session.clientPolicy().triggerOnEvent(new AdminClientUpdatedContext(rep, client, auth.adminAuth()));
 
-            if (!Boolean.TRUE.equals(session.removeAttribute(ClientSecretConstants.CLIENT_SECRET_ROTATION_ENABLED))){
+            if (!(boolean) session.getAttribute(ClientSecretConstants.CLIENT_SECRET_ROTATION_ENABLED)){
                 logger.debugv("Removing the previous rotation info for client {0}{1}, if there is",client.getClientId(),client.getName());
                 OIDCClientSecretConfigWrapper.fromClientModel(client).removeClientSecretRotationInfo();
             }
+            session.removeAttribute(ClientSecretConstants.CLIENT_SECRET_ROTATION_ENABLED);
 
             adminEvent.operation(OperationType.UPDATE).resourcePath(session.getContext().getUri()).representation(rep).success();
             return Response.noContent().build();
@@ -204,10 +205,6 @@ public class ClientResource {
         viewClientModel();
 
         ClientRepresentation representation = ModelToRepresentation.toRepresentation(client, session);
-
-        if (!auth.clients().canManage(client)) {
-            StripSecretsUtils.stripClient(representation);
-        }
 
         if (!auth.clients().canViewClientScopes()) {
             representation.setDefaultClientScopes(Collections.emptyList());
@@ -306,6 +303,7 @@ public class ClientResource {
             auth.clients().requireConfigure(client);
 
             logger.debug("regenerateSecret");
+            session.setAttribute(ClientSecretConstants.CLIENT_SECRET_ROTATION_ENABLED,Boolean.FALSE);
 
             ClientRepresentation representation = ModelToRepresentation.toRepresentation(client, session);
             ClientSecretRotationContext secretRotationContext = new ClientSecretRotationContext(
@@ -319,12 +317,13 @@ public class ClientResource {
             rep.setType(CredentialRepresentation.SECRET);
             rep.setValue(secret);
 
-            if (!Boolean.TRUE.equals(session.removeAttribute(ClientSecretConstants.CLIENT_SECRET_ROTATION_ENABLED))){
+            if (!(boolean) session.getAttribute(ClientSecretConstants.CLIENT_SECRET_ROTATION_ENABLED)){
                 logger.debugv("Removing the previous rotation info for client {0}{1}, if there is",client.getClientId(),client.getName());
                 OIDCClientSecretConfigWrapper.fromClientModel(client).removeClientSecretRotationInfo();
             }
 
             adminEvent.operation(OperationType.ACTION).resourcePath(session.getContext().getUri()).representation(rep).success();
+            session.removeAttribute(ClientSecretConstants.CLIENT_SECRET_ROTATION_ENABLED);
             rep.setValue(secret);
             return rep;
         } catch (ClientPolicyException cpe) {
@@ -353,7 +352,6 @@ public class ClientResource {
         rep.setRegistrationAccessToken(token);
 
         adminEvent.operation(OperationType.ACTION).resourcePath(session.getContext().getUri()).representation(rep).success();
-        rep.setRegistrationAccessToken(token); // Reset again to the "real" value. In the admin event, it is masked
         return rep;
     }
 
@@ -369,7 +367,7 @@ public class ClientResource {
     @Tag(name = KeycloakOpenAPI.Admin.Tags.CLIENTS)
     @Operation( summary = "Get the client secret")
     public CredentialRepresentation getClientSecret() {
-        auth.clients().requireManage(client);
+        auth.clients().requireView(client);
 
         logger.debug("getClientSecret");
         UserCredentialModel model = UserCredentialModel.secret(client.getSecret());
@@ -445,7 +443,7 @@ public class ClientResource {
             throw new ErrorResponseException("invalid_request", "Can't assign a Parameterized Scope to a Client as a Default Scope", Response.Status.BAD_REQUEST);
         }
 
-        validateClientScopeAssignment(session, clientScope, defaultScope, realm, false);
+        validateClientScopeAssignment(session, clientScope, defaultScope, realm);
 
         client.addClientScope(clientScope, defaultScope);
 
@@ -833,7 +831,7 @@ public class ClientResource {
     @Tag(name = KeycloakOpenAPI.Admin.Tags.CLIENTS)
     @Operation( summary = "Get the rotated client secret")
     public CredentialRepresentation getClientRotatedSecret() {
-        auth.clients().requireManage(client);
+        auth.clients().requireView(client);
 
         logger.debug("getClientRotatedSecret");
         OIDCClientSecretConfigWrapper wrapper = OIDCClientSecretConfigWrapper.fromClientModel(client);
@@ -872,15 +870,13 @@ public class ClientResource {
      * @param clientScope  the client scope to be assigned
      * @param defaultScope true if assigning as Default scope, false if Optional
      * @param realm        the realm where the assignment is happening
-     * @param realmLevel   true if the scope is assigned as a realm default/optional client scope,
-     *                     false if it is assigned to a specific client
      */
     public static void validateClientScopeAssignment(KeycloakSession session, ClientScopeModel clientScope,
-                                                     boolean defaultScope, RealmModel realm, boolean realmLevel) {
+                                                     boolean defaultScope, RealmModel realm) {
         LoginProtocolFactory loginProtocolFactory = (LoginProtocolFactory) session.getKeycloakSessionFactory()
                 .getProviderFactory(LoginProtocol.class, clientScope.getProtocol());
         if (loginProtocolFactory != null) {
-            loginProtocolFactory.validateClientScopeAssignment(session, clientScope, defaultScope, realm, realmLevel);
+            loginProtocolFactory.validateClientScopeAssignment(session, clientScope, defaultScope, realm);
         }
     }
 

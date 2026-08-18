@@ -27,7 +27,6 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -89,8 +88,6 @@ import org.keycloak.models.utils.RepresentationToModel;
 import org.keycloak.organization.OrganizationProvider;
 import org.keycloak.organization.validation.OrganizationsValidation;
 import org.keycloak.partialimport.PartialImportResults;
-import org.keycloak.protocol.LoginProtocol;
-import org.keycloak.protocol.LoginProtocolFactory;
 import org.keycloak.protocol.oidc.OIDCConfigAttributes;
 import org.keycloak.representations.idm.ApplicationRepresentation;
 import org.keycloak.representations.idm.AuthenticationExecutionExportRepresentation;
@@ -378,13 +375,9 @@ public class DefaultExportImportManager implements ExportImportManager {
         importIdentityProviders(rep, newRealm, session);
         importIdentityProviderMappers(rep, session);
 
-        if (rep.isVerifiableCredentialsEnabled() != null) {
-            newRealm.setVerifiableCredentialsEnabled(rep.isVerifiableCredentialsEnabled());
-        }
-
         Map<String, ClientScopeModel> clientScopes = new HashMap<>();
         if (rep.getClientScopes() != null) {
-            clientScopes = createClientScopes(session, rep.getClientScopes(), newRealm);
+            clientScopes = createClientScopes(rep.getClientScopes(), newRealm);
         }
         if (rep.getDefaultDefaultClientScopes() != null) {
             for (String clientScopeName : rep.getDefaultDefaultClientScopes()) {
@@ -512,6 +505,9 @@ public class DefaultExportImportManager implements ExportImportManager {
         if (rep.isInternationalizationEnabled() != null) {
             newRealm.setInternationalizationEnabled(rep.isInternationalizationEnabled());
         }
+        if (rep.isVerifiableCredentialsEnabled() != null) {
+            newRealm.setVerifiableCredentialsEnabled(rep.isVerifiableCredentialsEnabled());
+        }
         if (rep.getSupportedLocales() != null) {
             newRealm.setSupportedLocales(new HashSet<String>(rep.getSupportedLocales()));
         }
@@ -616,17 +612,9 @@ public class DefaultExportImportManager implements ExportImportManager {
         return appMap;
     }
 
-    private static Map<String, ClientScopeModel> createClientScopes(KeycloakSession session,
-                                                                    List<ClientScopeRepresentation> clientScopes,
-                                                                    RealmModel realm) {
+    private static Map<String, ClientScopeModel> createClientScopes(List<ClientScopeRepresentation> clientScopes, RealmModel realm) {
         Map<String, ClientScopeModel> appMap = new HashMap<>();
         for (ClientScopeRepresentation resourceRep : clientScopes) {
-            LoginProtocolFactory loginProtocolFactory = (LoginProtocolFactory) session.getKeycloakSessionFactory()
-                    .getProviderFactory(LoginProtocol.class, resourceRep.getProtocol());
-            if (loginProtocolFactory != null) {
-                loginProtocolFactory.validateClientScope(session, resourceRep);
-                loginProtocolFactory.addClientScopeDefaults(resourceRep);
-            }
             ClientScopeModel app = RepresentationToModel.createClientScope(realm, resourceRep);
             appMap.put(app.getName(), app);
         }
@@ -931,18 +919,6 @@ public class DefaultExportImportManager implements ExportImportManager {
         if (rep.getSmtpServer() != null) {
 
             Map<String, String> config = new HashMap<>(rep.getSmtpServer());
-            Map<String, String> existingConfig = realm.getSmtpConfig() != null ? realm.getSmtpConfig() : Map.of();
-
-            boolean destinationUnchanged =
-                    Objects.equals(config.getOrDefault("host", ""), existingConfig.getOrDefault("host", ""))
-                            && Objects.equals(config.getOrDefault("port", "25"), existingConfig.getOrDefault("port", "25"))
-                            && Objects.equals(config.getOrDefault("ssl", "false"), existingConfig.getOrDefault("ssl", "false"))
-                            && Objects.equals(config.getOrDefault("starttls", "false"), existingConfig.getOrDefault("starttls", "false"))
-                            && Objects.equals(config.getOrDefault("from", ""), existingConfig.getOrDefault("from", ""))
-                            && Objects.equals(config.getOrDefault("user", ""), existingConfig.getOrDefault("user", ""))
-                            && Objects.equals(config.getOrDefault("authTokenUrl", ""), existingConfig.getOrDefault("authTokenUrl", ""))
-                            && Objects.equals(config.getOrDefault("authTokenClientId", ""), existingConfig.getOrDefault("authTokenClientId", ""))
-                            && Objects.equals(config.getOrDefault("authTokenScope", ""), existingConfig.getOrDefault("authTokenScope", ""));
 
             if (!Boolean.parseBoolean(config.get("auth"))) {
                 config.remove("authTokenUrl");
@@ -954,12 +930,8 @@ public class DefaultExportImportManager implements ExportImportManager {
                 config.remove("authType");
             } else if (config.get("authType") == null || "basic".equals(config.get("authType"))) {
                 if (ComponentRepresentation.SECRET_VALUE.equals(config.get("password"))) {
-                    if (destinationUnchanged) {
-                        config.put("password", existingConfig.get("password"));
-                    } else {
-                        // Destination changed — reject the masked value; require explicit credential
-                        config.remove("password");
-                    }
+                    String passwordValue = realm.getSmtpConfig() != null ? realm.getSmtpConfig().get("password") : null;
+                    config.put("password", passwordValue);
                 }
                 config.remove("authTokenUrl");
                 config.remove("authTokenScope");
@@ -967,11 +939,8 @@ public class DefaultExportImportManager implements ExportImportManager {
                 config.remove("authTokenClientSecret");
             } else if ("token".equals(config.get("authType"))) {
                 if (ComponentRepresentation.SECRET_VALUE.equals(config.get("authTokenClientSecret"))) {
-                    if (destinationUnchanged) {
-                        config.put("authTokenClientSecret", existingConfig.get("authTokenClientSecret"));
-                    } else {
-                        config.remove("authTokenClientSecret");
-                    }
+                    String authTokenClientSecretValue = realm.getSmtpConfig() != null ? realm.getSmtpConfig().get("authTokenClientSecret") : null;
+                    config.put("authTokenClientSecret", authTokenClientSecretValue);
                 }
                 config.remove("password");
             }
@@ -1045,7 +1014,7 @@ public class DefaultExportImportManager implements ExportImportManager {
         }
         createCredentials(userRep, session, newRealm, user, false);
         createFederatedIdentities(userRep, session, newRealm, user);
-        createRoleMappings(session, userRep, user, newRealm);
+        createRoleMappings(userRep, user, newRealm);
         if (userRep.getClientConsents() != null) {
             for (UserConsentRepresentation consentRep : userRep.getClientConsents()) {
                 UserConsentModel consentModel = RepresentationToModel.toModel(newRealm, consentRep, session);

@@ -54,6 +54,8 @@ public class DatabaseAwareClusterProviderFactory extends InfinispanClusterProvid
 
     private static final String DEFAULT_POLL_INTERVAL_MS = "100ms";
 
+    private volatile NodeInfo nodeInfo;
+    private volatile Marshaller protoStreamMarshaller;
     private Timer timer;
 
     private Duration pollInterval;
@@ -64,10 +66,8 @@ public class DatabaseAwareClusterProviderFactory extends InfinispanClusterProvid
 
     @Override
     public ClusterProvider create(KeycloakSession session) {
-        ClusterProvider delegate = super.create(session);
-        InfinispanConnectionProvider ispnConnections = session.getProvider(InfinispanConnectionProvider.class);
-        return new DatabaseAwareClusterProvider(delegate, session,
-                ispnConnections.getNodeInfo(), ispnConnections.getMarshaller(), awaitTimeout);
+        return new DatabaseAwareClusterProvider(super.create(session), session,
+                nodeInfo, protoStreamMarshaller, awaitTimeout);
     }
 
     @Override
@@ -100,8 +100,8 @@ public class DatabaseAwareClusterProviderFactory extends InfinispanClusterProvid
     public void postInit(KeycloakSessionFactory factory) {
         KeycloakModelUtils.runJobInTransaction(factory, session -> {
             InfinispanConnectionProvider ispnConnections = session.getProvider(InfinispanConnectionProvider.class);
-            NodeInfo nodeInfo = ispnConnections.getNodeInfo();
-            Marshaller protoStreamMarshaller = ispnConnections.getMarshaller();
+            nodeInfo = ispnConnections.getNodeInfo();
+            this.protoStreamMarshaller = ispnConnections.getMarshaller();
 
             var pollerTask = new DatabaseClusterEventPollerTask(nodeInfo.clusterName(), protoStreamMarshaller);
             var runner = new ScheduledTaskRunner(factory, pollerTask);

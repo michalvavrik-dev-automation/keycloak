@@ -20,8 +20,9 @@ package org.keycloak.representations.idm;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.keycloak.json.KeycloakJsonMapperFactory;
-import org.keycloak.json.RawJsonValue;
+import org.keycloak.util.JsonSerialization;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Client Policies' (the set of all Client Policy) external representation class
@@ -50,15 +51,15 @@ public class ClientPoliciesRepresentation {
 
     @Override
     public int hashCode() {
-        return KeycloakJsonMapperFactory.mapper().convertValue(this, RawJsonValue.class).hashCode();
+        return JsonSerialization.mapper.convertValue(this, JsonNode.class).hashCode();
     }
 
     @Override
     public boolean equals(Object obj) {
         if (!(obj instanceof ClientPoliciesRepresentation)) return false;
-        RawJsonValue thisNode = KeycloakJsonMapperFactory.mapper().convertValue(this, RawJsonValue.class);
-        RawJsonValue thatNode = KeycloakJsonMapperFactory.mapper().convertValue(obj, RawJsonValue.class);
-        return thisNode.equals(thatNode);
+        JsonNode jsonNode = JsonSerialization.mapper.convertValue(this, JsonNode.class);
+        JsonNode jsonNodeThat = JsonSerialization.mapper.convertValue(obj, JsonNode.class);
+        return jsonNode.equals(jsonNodeThat);
     }
 
 }

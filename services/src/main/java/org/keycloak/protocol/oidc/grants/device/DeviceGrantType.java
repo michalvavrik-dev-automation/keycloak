@@ -285,6 +285,7 @@ public class DeviceGrantType extends OAuth2GrantTypeBase {
 
         String userSessionId = deviceCodeModel.getUserSessionId();
         event.detail(Details.CODE_ID, userSessionId);
+        event.session(userSessionId);
 
         // Retrieve UserSession
         var userSessionProvider = session.sessions();
@@ -309,7 +310,6 @@ public class DeviceGrantType extends OAuth2GrantTypeBase {
                 Response.Status.BAD_REQUEST);
         }
 
-        event.session(userSession);
         event.user(userSession.getUser());
 
         if (!user.isEnabled()) {

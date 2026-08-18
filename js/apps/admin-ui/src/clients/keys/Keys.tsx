@@ -84,7 +84,6 @@ export const Keys = ({
 
   const generate = async (config: KeyStoreConfig) => {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated
       const keyStore = await adminClient.clients.generateAndDownloadKey(
         {
           id: clientId,

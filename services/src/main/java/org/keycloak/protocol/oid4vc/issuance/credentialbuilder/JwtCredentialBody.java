@@ -17,40 +17,30 @@
 
 package org.keycloak.protocol.oid4vc.issuance.credentialbuilder;
 
-import java.util.Map;
-
 import org.keycloak.crypto.SignatureSignerContext;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jws.JWSBuilder;
-import org.keycloak.representations.JsonWebToken;
-import org.keycloak.util.JsonSerialization;
 
-import static org.keycloak.OID4VCConstants.CLAIM_NAME_CNF;
-import static org.keycloak.OID4VCConstants.CLAIM_NAME_JWK;
+import org.jboss.logging.Logger;
 
 /**
  * @author <a href="mailto:Ingrid.Kamga@adorsys.com">Ingrid Kamga</a>
  */
 public class JwtCredentialBody implements CredentialBody {
 
-    private final JWSBuilder jwsBuilder;
-    private final JsonWebToken jsonWebToken;
+    private static final Logger LOGGER = Logger.getLogger(JwtCredentialBody.class);
 
-    public JwtCredentialBody(JWSBuilder jwsBuilder, JsonWebToken jsonWebToken) {
-        this.jwsBuilder = jwsBuilder;
-        this.jsonWebToken = jsonWebToken;
+    private final JWSBuilder.EncodingBuilder jwsEncodingBuilder;
+
+    public JwtCredentialBody(JWSBuilder.EncodingBuilder jwsEncodingBuilder) {
+        this.jwsEncodingBuilder = jwsEncodingBuilder;
     }
 
-    @Override
     public void addKeyBinding(JWK jwk) throws CredentialBuilderException {
-        Map<String, Object> jwkMap = JsonSerialization
-                .mapper
-                .convertValue(jwk, JsonSerialization.mapper.getTypeFactory()
-                        .constructMapType(Map.class, String.class, Object.class));
-        jsonWebToken.setOtherClaims(CLAIM_NAME_CNF, Map.of(CLAIM_NAME_JWK, jwkMap));
+        LOGGER.warnf("Key binding is not yet implemented for JWT credentials");
     }
 
     public String sign(SignatureSignerContext signatureSignerContext) {
-        return jwsBuilder.jsonContent(jsonWebToken).sign(signatureSignerContext);
+        return jwsEncodingBuilder.sign(signatureSignerContext);
     }
 }

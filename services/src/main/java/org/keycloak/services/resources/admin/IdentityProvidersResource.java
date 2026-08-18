@@ -57,7 +57,6 @@ import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.models.utils.ModelToRepresentation;
 import org.keycloak.models.utils.RepresentationToModel;
 import org.keycloak.models.utils.StripSecretsUtils;
-import org.keycloak.organization.utils.Organizations;
 import org.keycloak.provider.ProviderFactory;
 import org.keycloak.representations.idm.CertificateRepresentation;
 import org.keycloak.representations.idm.IdentityProviderRepresentation;
@@ -272,9 +271,6 @@ public class IdentityProvidersResource {
         this.auth.realm().requireManageIdentityProviders();
 
         ReservedCharValidator.validateNoSpace(representation.getAlias());
-
-        // organization-related information should not be processed by non-organization API
-        Organizations.stripOrganizationId(representation);
 
         try {
             IdentityProviderModel identityProvider = RepresentationToModel.toModel(realm, representation, session);

@@ -74,30 +74,17 @@ public final class ConformanceApiClient {
      */
     public Stream<Map<String, String>> discoverModuleVariants(String planName, Map<String, String> planVariant,
             String moduleName, JsonNode suiteConfig) {
-        return discoverModuleVariants(planName, planVariant, List.of(moduleName), suiteConfig)
-                .get(moduleName).stream();
-    }
-
-    /**
-     * Discovers all variant combinations of several modules from a single created plan.
-     */
-    public Map<String, List<Map<String, String>>> discoverModuleVariants(String planName,
-            Map<String, String> planVariant, List<String> moduleNames, JsonNode suiteConfig) {
         JsonNode plan = createPlan(planName, suiteConfig, planVariant);
-        Map<String, List<Map<String, String>>> variants = new LinkedHashMap<>();
-        moduleNames.forEach(name -> variants.put(name, new ArrayList<>()));
+        List<Map<String, String>> variants = new ArrayList<>();
         for (JsonNode entry : plan.path("modules")) {
-            List<Map<String, String>> moduleVariants = variants.get(entry.path("testModule").asText());
-            if (moduleVariants != null) {
-                moduleVariants.add(variantMap(entry.path("variant")));
+            if (moduleName.equals(entry.path("testModule").asText())) {
+                variants.add(variantMap(entry.path("variant")));
             }
         }
-        variants.forEach((name, moduleVariants) -> {
-            if (moduleVariants.isEmpty()) {
-                throw new IllegalStateException("Plan contains no module named '" + name + "': " + plan);
-            }
-        });
-        return variants;
+        if (variants.isEmpty()) {
+            throw new IllegalStateException("Plan contains no module named '" + moduleName + "': " + plan);
+        }
+        return variants.stream();
     }
 
     private static Map<String, String> variantMap(JsonNode variant) {
@@ -112,9 +99,8 @@ public final class ConformanceApiClient {
 
     /**
      * Runs a module, optionally driving the system under test through {@code interaction} once the
-     * module waits for it. Browser driven modules are driven by the suite's own browser and pass
-     * {@code null}. The verifier (OID4VP) modules deliver the authorization request from here, and the
-     * issuer initiated (VCI) modules deliver the credential offer they wait for.
+     * module waits for it. The issuer (VCI) modules are driven by the suite's own browser and pass
+     * {@code null}. The verifier (OID4VP) modules deliver the authorization request from here.
      */
     public ConformanceModuleResult run(ConformanceModuleVariant module, JsonNode suiteConfig,
             Consumer<ModuleRun> interaction) {
@@ -138,19 +124,6 @@ public final class ConformanceApiClient {
 
         return new ConformanceModuleResult(module.plan(), module.planVariant(), module.name(), module.moduleVariant(),
                 planId, moduleId, info.path("status").asText(), info.path("result").asText("UNKNOWN"), logs);
-    }
-
-    /**
-     * Issues a GET to a per test endpoint exposed by the suite, i.e. {@code /test/a/<alias>/<path>?<query>}.
-     * Used to deliver out of band input the suite is waiting for, so it is not replayed on IO failures.
-     */
-    public void visitTestEndpoint(String alias, String path, String query) {
-        String requestPath = "/test/a/" + alias + "/" + path + (query == null || query.isEmpty() ? "" : "?" + query);
-        HttpResponse<String> response = send(request(requestPath).GET().build(), false);
-        if (response.statusCode() / 100 != 2) {
-            throw new IllegalStateException("Suite test endpoint " + path + " returned HTTP "
-                    + response.statusCode() + ": " + response.body());
-        }
     }
 
     private JsonNode createPlan(String planName, JsonNode suiteConfig, Map<String, String> variants) {
@@ -177,9 +150,7 @@ public final class ConformanceApiClient {
     }
 
     private void startModule(String planId, String moduleId) {
-        // not replayed on IO failures as a lost response would start the module a second time
-        expectJson(request("/api/runner/" + moduleId).POST(HttpRequest.BodyPublishers.noBody()).build(), 200,
-                idContext(planId, moduleId), false);
+        expectJson(request("/api/runner/" + moduleId).POST(HttpRequest.BodyPublishers.noBody()).build(), 200, planId, moduleId);
     }
 
     private JsonNode waitForRunnableOrFinished(String planId, String moduleId) {
@@ -221,15 +192,16 @@ public final class ConformanceApiClient {
     }
 
     private JsonNode expectJson(HttpRequest request, int expectedStatus) {
-        return expectJson(request, expectedStatus, "", true);
+        return expectJson(request, expectedStatus, "");
     }
 
     private JsonNode expectJson(HttpRequest request, int expectedStatus, String planId, String moduleId) {
-        return expectJson(request, expectedStatus, idContext(planId, moduleId), true);
+        // The plan and module ids help cross-reference the failure with the OIDF suite UI
+        return expectJson(request, expectedStatus, " (planId=" + planId + ", moduleId=" + moduleId + ")");
     }
 
-    private JsonNode expectJson(HttpRequest request, int expectedStatus, String idContext, boolean replayable) {
-        HttpResponse<String> response = send(request, replayable);
+    private JsonNode expectJson(HttpRequest request, int expectedStatus, String idContext) {
+        HttpResponse<String> response = send(request);
         if (response.statusCode() != expectedStatus) {
             throw new IllegalStateException("Conformance API " + request.method() + " " + request.uri()
                     + idContext + " returned HTTP " + response.statusCode() + ": " + response.body());
@@ -237,34 +209,14 @@ public final class ConformanceApiClient {
         return JsonSerialization.valueFromString(response.body(), JsonNode.class);
     }
 
-    private static String idContext(String planId, String moduleId) {
-        // The plan and module ids help cross-reference the failure with the OIDF suite UI
-        return " (planId=" + planId + ", moduleId=" + moduleId + ")";
-    }
-
     private HttpResponse<String> send(HttpRequest request) {
-        return send(request, true);
-    }
-
-    /**
-     * The suite occasionally drops a connection (EOF with no bytes), so transient IO failures are retried for
-     * replayable requests. A replayed plan or module creation at worst leaves an unused entry behind, while
-     * requests that trigger suite actions must be sent exactly once.
-     */
-    private HttpResponse<String> send(HttpRequest request, boolean replayable) {
-        int attempts = replayable ? 4 : 1;
-        for (int attempt = 1; ; attempt++) {
-            try {
-                return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            } catch (IOException e) {
-                if (attempt >= attempts) {
-                    throw new RuntimeException("Conformance API request failed: " + request.uri(), e);
-                }
-                sleep(Duration.ofSeconds(attempt));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Interrupted while calling conformance API: " + request.uri(), e);
-            }
+        try {
+            return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (IOException e) {
+            throw new RuntimeException("Conformance API request failed: " + request.uri(), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while calling conformance API: " + request.uri(), e);
         }
     }
 

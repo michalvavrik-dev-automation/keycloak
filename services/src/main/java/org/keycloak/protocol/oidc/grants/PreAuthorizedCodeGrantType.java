@@ -41,12 +41,10 @@ import org.keycloak.models.Constants;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakUriInfo;
 import org.keycloak.models.SingleUseObjectProvider;
-import org.keycloak.models.UserModel;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.models.oid4vci.CredentialScopeModel;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint;
 import org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerWellKnownProvider;
-import org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferState;
 import org.keycloak.protocol.oid4vc.issuance.credentialoffer.CredentialOfferStorage;
 import org.keycloak.protocol.oid4vc.issuance.credentialoffer.preauth.PreAuthCodeHandler;
 import org.keycloak.protocol.oid4vc.model.CredentialsOffer;
@@ -54,21 +52,18 @@ import org.keycloak.protocol.oid4vc.model.OID4VCAuthorizationDetail;
 import org.keycloak.protocol.oid4vc.model.PreAuthCodeCtx;
 import org.keycloak.protocol.oid4vc.model.PreAuthorizedCodeGrant;
 import org.keycloak.protocol.oid4vc.utils.CredentialScopeUtils;
-import org.keycloak.protocol.oid4vc.utils.OID4VCUtil;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.TokenManager.AccessTokenResponseBuilder;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.AccessTokenResponse;
 import org.keycloak.representations.AuthorizationDetailsJSONRepresentation;
 import org.keycloak.services.CorsErrorResponseException;
-import org.keycloak.services.managers.AuthenticationManager;
 import org.keycloak.util.Strings;
 import org.keycloak.utils.MediaType;
 
 import org.jboss.logging.Logger;
 
 import static org.keycloak.events.Details.REASON;
-import static org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint.getCredentialOfferLifespan;
 import static org.keycloak.protocol.oid4vc.model.ErrorType.UNKNOWN_CREDENTIAL_CONFIGURATION;
 import static org.keycloak.protocol.oid4vc.model.PreAuthorizedCodeGrant.PRE_AUTH_GRANT_TYPE;
 import static org.keycloak.services.util.DefaultClientSessionContext.fromClientSessionAndScopeParameter;
@@ -125,18 +120,6 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT,
                     "Code is expired", Response.Status.BAD_REQUEST);
         }
-
-        int credentialOfferLifespan = getCredentialOfferLifespan(realm);
-        if (!isCredentialOfferLifespanValid(offerState, credentialOfferLifespan)) {
-            offerStorage.removeOfferState(offerState);
-            event.error(Errors.EXPIRED_CODE);
-            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT,
-                    "Code expiration is outside the configured credential offer lifespan", Response.Status.BAD_REQUEST);
-        }
-
-        markPreAuthCodeAsUsed(preAuthCode, offerState.getExpiresAt());
-
-        validateOriginatingSession(offerState, offerStorage);
 
         String expTxCode = offerState.getTxCode();
         if (expTxCode != null) {
@@ -337,13 +320,10 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
                     errorMessage, Response.Status.BAD_REQUEST);
         }
 
-        return preAuthCodeCtx;
-    }
-
-    private void markPreAuthCodeAsUsed(String code, long expiresAt) {
+        // Pre-auth code is valid, but let's prevent replay attacks (for the remaining validity period)
         SingleUseObjectProvider singleUseStore = session.singleUseObjects();
         String key = getPreAuthCodeSingleObjectKey(code);
-        long expiresIn = expiresAt - Time.currentTimeSeconds();
+        long expiresIn = preAuthCodeCtx.getExpiresAt() - Time.currentTime();
         boolean firstInsertion = singleUseStore.putIfAbsent(key, expiresIn);
         if (!firstInsertion) {
             String errorMessage = "Pre-authorized code has already been used";
@@ -351,72 +331,8 @@ public class PreAuthorizedCodeGrantType extends OAuth2GrantTypeBase {
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT,
                     errorMessage, Response.Status.BAD_REQUEST);
         }
-    }
 
-    static boolean isCredentialOfferLifespanValid(CredentialOfferState offerState, int credentialOfferLifespan) {
-        Long offerCreatedAt = offerState.getCreatedAt();
-        return offerCreatedAt != null
-                && offerCreatedAt > 0
-                && credentialOfferLifespan > 0
-                && offerState.getExpiresAt() > offerCreatedAt
-                && offerState.getExpiresAt() - offerCreatedAt <= credentialOfferLifespan;
-    }
-
-    private void validateOriginatingSession(CredentialOfferState offerState, CredentialOfferStorage offerStorage) {
-        String originatingUserId = offerState.getOriginatingUserId();
-        String originatingUserSessionId = offerState.getOriginatingUserSessionId();
-        Boolean originatingUserSessionOffline = offerState.getOriginatingUserSessionOffline();
-        Long passwordCredentialCreatedDate = offerState.getOriginatingUserPasswordCredentialCreatedDate();
-
-        // Offers created by the REST endpoint are bound to the user session that authorized their creation.
-        // Other offer creation mechanisms, such as the required-action flow, may run before a user session exists.
-        if (originatingUserId == null) {
-            boolean hasPartialMetadata = originatingUserSessionId != null
-                    || originatingUserSessionOffline != null
-                    || passwordCredentialCreatedDate != null;
-            if (!hasPartialMetadata) {
-                return;
-            }
-
-            offerStorage.removeOfferState(offerState);
-            String errorMessage = "Pre-authorized code has incomplete originating session metadata";
-            event.detail(REASON, errorMessage).error(Errors.INVALID_CODE);
-            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT,
-                    errorMessage, Response.Status.BAD_REQUEST);
-        }
-
-        UserModel originatingUser = session.users().getUserById(realm, originatingUserId);
-        if (originatingUser == null || !originatingUser.isEnabled()) {
-            String errorMessage = "User that authorized the pre-authorized code is not active";
-            event.detail(REASON, errorMessage).error(Errors.USER_SESSION_NOT_FOUND);
-            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT,
-                    errorMessage, Response.Status.BAD_REQUEST);
-        }
-
-        if (originatingUserSessionId != null) {
-            UserSessionModel originatingSession = Boolean.TRUE.equals(originatingUserSessionOffline)
-                    ? session.sessions().getOfflineUserSession(realm, originatingUserSessionId)
-                    : session.sessions().getUserSession(realm, originatingUserSessionId);
-            boolean validSession = originatingSession != null
-                    && originatingSession.getState() == UserSessionModel.State.LOGGED_IN
-                    && AuthenticationManager.isSessionValid(realm, originatingSession)
-                    && originatingSession.getUser() != null
-                    && originatingSession.getUser().getId().equals(originatingUserId);
-            if (!validSession) {
-                String errorMessage = "Session that authorized the pre-authorized code is not active";
-                event.detail(REASON, errorMessage).error(Errors.USER_SESSION_NOT_FOUND);
-                throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT,
-                        errorMessage, Response.Status.BAD_REQUEST);
-            }
-        }
-
-        if (passwordCredentialCreatedDate != null && passwordCredentialCreatedDate.longValue()
-                != OID4VCUtil.getPasswordCredentialTimestamp(originatingUser)) {
-            String errorMessage = "Credentials of the user that authorized the pre-authorized code have changed";
-            event.detail(REASON, errorMessage).error(Errors.INVALID_CODE);
-            throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT,
-                    errorMessage, Response.Status.BAD_REQUEST);
-        }
+        return preAuthCodeCtx;
     }
 
     private static String getPreAuthCodeSingleObjectKey(String code) {

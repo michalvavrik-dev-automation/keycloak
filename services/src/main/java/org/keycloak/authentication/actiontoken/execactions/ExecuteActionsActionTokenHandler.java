@@ -118,9 +118,8 @@ public class ExecuteActionsActionTokenHandler extends AbstractActionTokenHandler
         token.getRequiredActions().stream().forEach(authSession::addRequiredAction);
 
         UserModel user = tokenContext.getAuthenticationSession().getAuthenticatedUser();
-        if (token.getRequiredActions().contains(UserModel.RequiredAction.VERIFY_EMAIL.name())) {
-            user.setEmailVerified(true);
-        }
+        // verify user email as we know it is valid as this entry point would never have gotten here.
+        user.setEmailVerified(true);
 
         String nextAction = AuthenticationManager.nextRequiredAction(tokenContext.getSession(), authSession, tokenContext.getRequest(), tokenContext.getEvent());
         return AuthenticationManager.redirectToRequiredActions(tokenContext.getSession(), tokenContext.getRealm(), authSession, tokenContext.getUriInfo(), nextAction);

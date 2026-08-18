@@ -17,7 +17,6 @@ import org.keycloak.scim.resource.schema.ModelSchema;
 import org.keycloak.scim.resource.schema.Schema;
 import org.keycloak.scim.resource.spi.ScimResourceTypeProvider;
 import org.keycloak.scim.resource.spi.ScimResourceTypeProviderFactory;
-import org.keycloak.utils.StringUtil;
 
 import static org.keycloak.scim.resource.Scim.hasDiscoveryEndpointPermission;
 
@@ -56,8 +55,7 @@ public class ResourceTypeProvider implements ScimResourceTypeProvider<ResourceTy
 
     @Override
     public Stream<ResourceType> getAll(SearchRequest searchRequest) {
-        // If searchRequest.filter is present, the provider should respond with forbidden status to ensure that clients cannot incorrectly assume that any matching conditions specified in a filter are true.
-        if (hasDiscoveryEndpointPermission(session) && (searchRequest == null || StringUtil.isBlank(searchRequest.getFilter()))) {
+        if (hasDiscoveryEndpointPermission(session)) {
             return session.getKeycloakSessionFactory().getProviderFactoriesStream(ScimResourceTypeProvider.class)
                     .map(ScimResourceTypeProviderFactory.class::cast)
                     .map(this::toRepresentation)
@@ -67,8 +65,8 @@ public class ResourceTypeProvider implements ScimResourceTypeProvider<ResourceTy
     }
 
     @Override
-    public Long count(SearchRequest searchRequest, int resourceSize) {
-        return (long) resourceSize;
+    public Long count(SearchRequest searchRequest) {
+        return getAll(searchRequest).count();
     }
 
     private ResourceType toRepresentation(ScimResourceTypeProviderFactory<? extends ScimResourceTypeProvider<? extends ResourceTypeRepresentation>> factory) {

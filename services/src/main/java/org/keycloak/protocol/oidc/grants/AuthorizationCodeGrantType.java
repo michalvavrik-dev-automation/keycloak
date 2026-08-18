@@ -35,7 +35,6 @@ import org.keycloak.models.ClientSessionContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.UserSessionModel;
-import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.TokenManager;
 import org.keycloak.protocol.oidc.utils.OAuth2Code;
@@ -87,12 +86,12 @@ public class AuthorizationCodeGrantType extends OAuth2GrantTypeBase {
 
         OAuth2CodeParser.ParseResult parseResult = OAuth2CodeParser.parseCode(session, code, realm, event);
         if (parseResult.isIllegalCode()) {
-            // Attempt to use same code twice should invalidate existing clientSession.
-            // Detach must persist even when the error response rolls back the main tx.
-            KeycloakModelUtils.enlistAfterRollback(session, ctx -> {
-                AuthenticatedClientSessionModel cs = ctx.findClientSession(parseResult.getClientSession());
-                if (cs != null) cs.detachFromUserSession();
-            });
+            AuthenticatedClientSessionModel clientSession = parseResult.getClientSession();
+
+            // Attempt to use same code twice should invalidate existing clientSession
+            if (clientSession != null) {
+                clientSession.detachFromUserSession();
+            }
 
             event.error(Errors.INVALID_CODE);
 
@@ -125,7 +124,6 @@ public class AuthorizationCodeGrantType extends OAuth2GrantTypeBase {
             throw new CorsErrorResponseException(cors, OAuthErrorException.INVALID_GRANT, "User not found", Response.Status.BAD_REQUEST);
         }
 
-        event.session(userSession);
         event.user(userSession.getUser());
 
         if (!user.isEnabled()) {

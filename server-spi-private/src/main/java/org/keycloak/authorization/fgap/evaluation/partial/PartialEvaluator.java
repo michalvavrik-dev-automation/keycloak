@@ -31,7 +31,6 @@ import jakarta.persistence.criteria.Predicate;
 
 import org.keycloak.Config;
 import org.keycloak.authorization.fgap.AdminPermissionsSchema;
-import org.keycloak.authorization.fgap.evaluation.partial.PartialEvaluationPolicyProvider.Outcome;
 import org.keycloak.authorization.model.Policy;
 import org.keycloak.authorization.policy.provider.PolicyProvider;
 import org.keycloak.common.Profile;
@@ -56,7 +55,7 @@ public final class PartialEvaluator {
     public List<Predicate> getPredicates(KeycloakSession session, ResourceType resourceType, PartialEvaluationStorageProvider storage, RealmModel realm, CriteriaBuilder builder, CriteriaQuery<?> queryBuilder, Path<?> path) {
         if (Profile.isFeatureEnabled(Profile.Feature.ADMIN_FINE_GRAINED_AUTHZ)) {
             // feature not enabled, if a storage evaluator is provided try to resolve any filter from there
-            return storage == null ? List.of() : storage.getFilters(new PartialEvaluationContext(session, storage, builder, queryBuilder, path));
+            return storage == null ? List.of() : storage.getFilters(new PartialEvaluationContext(storage, builder, queryBuilder, path));
         }
 
         // check before getUser() to avoid infinite recursion when called from a runWithoutAuthorization block
@@ -106,22 +105,13 @@ public final class PartialEvaluator {
                         continue;
                     }
 
-                    Outcome granted = provider.evaluateOutcome(session, policy, adminUser);
-
-                    if (Outcome.SKIP.equals(granted)) {
-                        continue;
-                    }
-
-                    if (Outcome.FORCE_DENY.equals(granted)) {
-                        deniedResources.addAll(ids);
-                        continue;
-                    }
+                    boolean granted = provider.evaluate(session, policy, adminUser);
 
                     if (Logic.NEGATIVE.equals(policy.getLogic())) {
-                        granted = granted == Outcome.GRANT ? Outcome.DENY : Outcome.GRANT;
+                        granted = !granted;
                     }
 
-                    if (Outcome.GRANT.equals(granted)) {
+                    if (granted) {
                         allowedResources.addAll(ids);
                     } else {
                         deniedResources.addAll(ids);
@@ -147,7 +137,7 @@ public final class PartialEvaluator {
         return cache.get(adminUser.getId()).get(resourceType.getType());
     }
 
-    public List<Predicate> buildPredicates(PartialEvaluationContext context) {
+    private List<Predicate> buildPredicates(PartialEvaluationContext context) {
         List<Predicate> storageFilters = getStorageFilters(context);
         CriteriaBuilder builder = context.getCriteriaBuilder();
         Path<?> path = context.getPath();
@@ -169,7 +159,7 @@ public final class PartialEvaluator {
 
         if (!deniedIds.isEmpty()) {
             // add filters to remove denied resources from the result set
-            predicates.add(builder.not(context.inPredicate(path.get(ID_FIELD), deniedIds)));
+            predicates.add(builder.not(path.get(ID_FIELD).in(deniedIds)));
         }
 
         List<Predicate> storageNegateFilters = getStorageNegateFilters(context);
@@ -192,11 +182,11 @@ public final class PartialEvaluator {
 
         if (storageFilters.isEmpty()) {
             // no filter from the evaluator, filter based on the resources that were granted
-            predicates.add(builder.and(context.inPredicate(path.get(ID_FIELD), allowedResourceIds)));
+            predicates.add(builder.and(path.get(ID_FIELD).in(allowedResourceIds)));
         } else {
             // there are filters from the evaluator, the resources granted will be a returned using a or condition
             List<Predicate> orPredicates = new ArrayList<>(storageFilters);
-            orPredicates.add(context.inPredicate(path.get(ID_FIELD), allowedResourceIds));
+            orPredicates.add(path.get(ID_FIELD).in(allowedResourceIds));
             predicates.add(builder.or(orPredicates.toArray(new Predicate[0])));
         }
 
@@ -204,7 +194,7 @@ public final class PartialEvaluator {
     }
 
     private PartialEvaluationContext createEvaluationContext(KeycloakSession session, ResourceType resourceType, Set<String> allowedResources, Set<String> deniedResources, PartialEvaluationStorageProvider storage, CriteriaBuilder builder, CriteriaQuery<?> queryBuilder, Path<?> path, UserModel adminUser) {
-        PartialEvaluationContext context = new PartialEvaluationContext(session, resourceType, allowedResources, deniedResources, storage, builder, queryBuilder, path);
+        PartialEvaluationContext context = new PartialEvaluationContext(resourceType, allowedResources, deniedResources, storage, builder, queryBuilder, path);
         String groupType = resourceType.getGroupType();
 
         if (groupType != null) {

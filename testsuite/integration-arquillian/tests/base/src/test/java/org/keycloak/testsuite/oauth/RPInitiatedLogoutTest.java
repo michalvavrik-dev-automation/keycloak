@@ -506,7 +506,12 @@ public class RPInitiatedLogoutTest extends AbstractTestRealmKeycloakTest {
         // Info page present. No link "back to the application"
         infoPage.assertCurrent();
         Assertions.assertEquals("You are logged out", infoPage.getInfo());
-        Assertions.assertFalse(logoutConfirmPage.isBackToApplicationLinkPresent());
+        try {
+            logoutConfirmPage.clickBackToApplicationLink();
+            fail();
+        } catch (NoSuchElementException ex) {
+            // expected
+        }
 
         EventAssertion.assertSuccess(events.poll()).type(EventType.LOGOUT)
                 .sessionId(tokenResponse.getSessionState()).clientId("account").withoutDetails(Details.REDIRECT_URI);
@@ -829,7 +834,12 @@ public class RPInitiatedLogoutTest extends AbstractTestRealmKeycloakTest {
         // Info page present. No link "back to the application"
         infoPage.assertCurrent();
         Assertions.assertEquals("You are logged out", infoPage.getInfo());
-        Assertions.assertFalse(logoutConfirmPage.isBackToApplicationLinkPresent());
+        try {
+            logoutConfirmPage.clickBackToApplicationLink();
+            fail();
+        } catch (NoSuchElementException ex) {
+            // expected
+        }
 
         EventAssertion.assertSuccess(events.poll()).type(EventType.LOGOUT)
                 .sessionId(tokenResponse.getSessionState()).clientId("account").withoutDetails(Details.REDIRECT_URI);
@@ -945,7 +955,12 @@ public class RPInitiatedLogoutTest extends AbstractTestRealmKeycloakTest {
             logoutConfirmPage.confirmLogout();
             infoPage.assertCurrent();
             Assertions.assertEquals("You are logged out", infoPage.getInfo());
-            Assertions.assertFalse(logoutConfirmPage.isBackToApplicationLinkPresent());
+            try {
+                logoutConfirmPage.clickBackToApplicationLink();
+                fail();
+            } catch (NoSuchElementException ex) {
+                // expected
+            }
 
             // Display logout with ui_locales parameter set to "de"
             tokenResponse = loginUser();

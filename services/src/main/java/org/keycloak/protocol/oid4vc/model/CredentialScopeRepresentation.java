@@ -278,11 +278,7 @@ public class CredentialScopeRepresentation extends ClientScopeRepresentation {
 
     public List<String> getRequiredKeyAttestationKeyStorage() {
         return Optional.ofNullable(getAttribute(VC_KEY_ATTESTATION_REQUIRED_KEY_STORAGE))
-                .map(s -> Arrays.stream(s.split(","))
-                                .map(String::trim)
-                                .filter(value -> !value.isEmpty())
-                                .toList())
-                .filter(values -> !values.isEmpty())
+                .map(s -> Arrays.asList(s.split(",")))
                 // it is important to return null here instead of an empty list:
                 // If both key_storage and user_authentication parameters are absent, the
                 // key_attestations_required parameter may be empty, indicating a key attestation is needed
@@ -292,16 +288,12 @@ public class CredentialScopeRepresentation extends ClientScopeRepresentation {
 
     public CredentialScopeRepresentation setRequiredKeyAttestationKeyStorage(List<String> keyStorage) {
         return setAttribute(VC_KEY_ATTESTATION_REQUIRED_KEY_STORAGE, Optional.ofNullable(keyStorage)
-                .map(list -> String.join(",", list)).orElse(null));
+                .map(list -> String.join(",")).orElse(null));
     }
 
     public List<String> getRequiredKeyAttestationUserAuthentication() {
         return Optional.ofNullable(getAttribute(VC_KEY_ATTESTATION_REQUIRED_USER_AUTH))
-                .map(s -> Arrays.stream(s.split(","))
-                                .map(String::trim)
-                                .filter(value -> !value.isEmpty())
-                                .toList())
-                .filter(values -> !values.isEmpty())
+                .map(s -> Arrays.asList(s.split(",")))
                 // it is important to return null here instead of an empty list:
                 // If both key_storage and user_authentication parameters are absent, the
                 // key_attestations_required parameter may be empty, indicating a key attestation is needed
@@ -311,7 +303,7 @@ public class CredentialScopeRepresentation extends ClientScopeRepresentation {
 
     public CredentialScopeRepresentation setRequiredKeyAttestationUserAuthentication(List<String> userAuthentication) {
         return setAttribute(VC_KEY_ATTESTATION_REQUIRED_USER_AUTH, Optional.ofNullable(userAuthentication)
-                .map(list -> String.join(",", list)).orElse(null));
+                .map(list -> String.join(",")).orElse(null));
     }
 
     public <T> T getCredentialPolicyValue(CredentialClientPolicy<T> policy) {

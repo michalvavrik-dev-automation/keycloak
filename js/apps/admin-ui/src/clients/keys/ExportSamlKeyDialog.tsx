@@ -33,7 +33,6 @@ export const ExportSamlKeyDialog = ({
 
   const download = async (config: KeyStoreConfig) => {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated
       const keyStore = await adminClient.clients.downloadKey(
         {
           id: clientId,

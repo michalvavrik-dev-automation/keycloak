@@ -1,9 +1,6 @@
 package org.keycloak.models.workflow.events;
 
-import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.models.RealmModel;
-import org.keycloak.models.RoleModel;
 import org.keycloak.models.RoleModel.RoleRevokedEvent;
 import org.keycloak.models.workflow.AbstractWorkflowEventProvider;
 import org.keycloak.models.workflow.ResourceType;
@@ -40,26 +37,16 @@ public class UserRoleRevokedWorkflowEventProvider extends AbstractWorkflowEventP
             return false;
         }
         if (super.configParameter != null) {
+            // this is the case when the role name is passed as a parameter to the event provider - like user-role-revoked(myrole)
             ProviderEvent roleEvent = (ProviderEvent) context.getEvent().getEvent();
             if (roleEvent instanceof RoleRevokedEvent roleRevokedEvent) {
-                RoleModel expectedRole = resolveRole(configParameter, roleRevokedEvent.getRealm());
-                return expectedRole != null && expectedRole.getId().equals(roleRevokedEvent.getRole().getId());
+                return configParameter.equals(roleRevokedEvent.getRole().getName());
             } else {
                 return false;
             }
         } else {
+            // nothing else to check
             return true;
         }
-    }
-
-    private RoleModel resolveRole(String roleName, RealmModel realm) {
-        int slashIndex = roleName.indexOf('/');
-        if (slashIndex != -1) {
-            String clientId = roleName.substring(0, slashIndex);
-            String name = roleName.substring(slashIndex + 1);
-            ClientModel client = session.clients().getClientByClientId(realm, clientId);
-            return client != null ? client.getRole(name) : null;
-        }
-        return realm.getRole(roleName);
     }
 }

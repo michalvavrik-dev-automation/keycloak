@@ -733,18 +733,10 @@ public class AuthenticationManager {
         String brokerId = userSession.getNote(Details.IDENTITY_PROVIDER);
         String initiatingIdp = logoutAuthSession.getAuthNote(AuthenticationManager.LOGOUT_INITIATING_IDP);
         if (brokerId != null && !brokerId.equals(initiatingIdp)) {
-            UserAuthenticationIdentityProvider<?> identityProvider = null;
-            try {
-                identityProvider = IdentityBrokerService.getIdentityProvider(session, brokerId);
-            } catch (IdentityBrokerException e) {
-                logger.warnf("Identity provider [%s] is no longer available, skipping Keycloak-initiated broker logout for user session [%s]", brokerId, userSession.getId());
-            }
-
-            if (identityProvider != null) {
-                Response response = identityProvider.keycloakInitiatedBrowserLogout(session, userSession, uriInfo, realm);
-                if (response != null) {
-                    return response;
-                }
+            UserAuthenticationIdentityProvider<?> identityProvider = IdentityBrokerService.getIdentityProvider(session, brokerId);
+            Response response = identityProvider.keycloakInitiatedBrowserLogout(session, userSession, uriInfo, realm);
+            if (response != null) {
+                return response;
             }
         }
 
@@ -1023,7 +1015,7 @@ public class AuthenticationManager {
         String[] split = cookie.split("/");
         if (split.length >= 3) {
             String oldSessionId = split[2];
-            return sessionId.equals(oldSessionId);
+            return !sessionId.equals(oldSessionId);
         }
         return false;
     }
@@ -1669,19 +1661,11 @@ public class AuthenticationManager {
         return true;
     }
 
-    /**
-     * Resolve lightweight access token roles
-     *
-     * @param session session
-     * @param accessToken access token
-     * @param realm realm
-     * @return true if some roles were resolved. False if the token was not lightweight or there was some issue (EG. user session not found)
-     */
-    public static boolean resolveLightweightAccessTokenRoles(KeycloakSession session, AccessToken accessToken, RealmModel realm) {
+    public static void resolveLightweightAccessTokenRoles(KeycloakSession session, AccessToken accessToken, RealmModel realm) {
         final String issuedFor = accessToken.getIssuedFor();
         ClientModel client = realm.getClientByClientId(issuedFor);
         if(client == null) {
-            return false;
+            return;
         }
 
         TokenContextEncoderProvider encoder = session.getProvider(TokenContextEncoderProvider.class);
@@ -1701,10 +1685,8 @@ public class AuthenticationManager {
                 accessToken.subject(userSession.getUser().getId());
                 accessToken.setRealmAccess(realmAccess);
                 accessToken.setResourceAccess(clientAccess);
-                return true;
             }
         }
-        return false;
     }
 
     public enum AuthenticationStatus {

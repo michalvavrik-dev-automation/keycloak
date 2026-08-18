@@ -40,7 +40,7 @@ public class PatchRequest {
     }
 
     public void setSchemas(Set<String> schemas) {
-        this.schemas = schemas != null ? schemas : Set.of();
+        this.schemas = schemas;
     }
 
     public List<PatchOperation> getOperations() {

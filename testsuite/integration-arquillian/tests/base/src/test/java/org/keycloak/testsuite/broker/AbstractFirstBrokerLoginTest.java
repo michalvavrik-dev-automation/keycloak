@@ -138,7 +138,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         } catch (NoSuchElementException expected) {
         }
 
-        assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+        try {
+            this.loginPage.clickRegister();
+            Assertions.fail("Not expected to see register link");
+        } catch (NoSuchElementException expected) {
+        }
 
         loginPage.login("password");
         Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
@@ -174,7 +178,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         } catch (NoSuchElementException expected) {
         }
 
-        assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+        try {
+            this.loginPage.clickRegister();
+            Assertions.fail("Not expected to see register link");
+        } catch (NoSuchElementException expected) {
+        }
 
         loginPage.login("foobar", "password");
         Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
@@ -206,7 +214,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         } catch (NoSuchElementException expected) {
         }
 
-        assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+        try {
+            this.loginPage.clickRegister();
+            Assertions.fail("Not expected to see register link");
+        } catch (NoSuchElementException expected) {
+        }
 
         loginPage.login("consumer", "password");
         Assertions.assertTrue(oauth.parseLoginResponse().isSuccess());
@@ -237,7 +249,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
             } catch (NoSuchElementException expected) {
             }
 
-            assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+            try {
+                this.loginPage.clickRegister();
+                Assertions.fail("Not expected to see register link");
+            } catch (NoSuchElementException expected) {
+            }
 
             loginPage.login("consumer", "wrongpassword");
             loginPage.assertCurrent();
@@ -246,7 +262,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
 
             assertEquals("Invalid username or password.", loginPage.getInputError());
 
-            assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+            try {
+                this.loginPage.clickRegister();
+                Assertions.fail("Not expected to see register link");
+            } catch (NoSuchElementException expected) {
+            }
         } finally {
             revertRegistrationAllowedModification.run();
         }
@@ -279,7 +299,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         } catch (NoSuchElementException expected) {
         }
 
-        assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+        try {
+            this.loginPage.clickRegister();
+            Assertions.fail("Not expected to see register link");
+        } catch (NoSuchElementException expected) {
+        }
 
         loginPage.resetPassword();
         loginPasswordResetPage.assertCurrent();
@@ -309,7 +333,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         } catch (NoSuchElementException expected) {
         }
 
-        assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+        try {
+            this.loginPage.clickRegister();
+            Assertions.fail("Not expected to see register link");
+        } catch (NoSuchElementException expected) {
+        }
 
         loginPage.resetPassword();
         loginPasswordResetPage.assertCurrent();
@@ -529,7 +557,11 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         } catch (NoSuchElementException expected) {
         }
 
-        assertFalse(this.loginPage.isRegisterLinkPresent(), "Not expected to see register link");
+        try {
+            this.loginPage.clickRegister();
+            Assertions.fail("Not expected to see register link");
+        } catch (NoSuchElementException expected) {
+        }
 
         configureSMTPServer();
 
@@ -861,17 +893,6 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         log.info("navigating to url from email: " + url);
         driver.navigate().to(url);
 
-
-        verifyEmailPage.assertCurrent();
-        assertFalse(realm.users().get(linkedUserId).toRepresentation().isEmailVerified());
-
-        assertEquals(2, mail.getReceivedMessages().length);
-        String verificationUrl = assertEmailAndGetUrl(mail.getLastReceivedMessage(), MailServerConfiguration.FROM, USER_EMAIL,
-                "verify your email address");
-
-        log.info("navigating to url from email: " + verificationUrl);
-        driver.navigate().to(verificationUrl.trim());
-
         //test if user is logged in
         assertTrue(driver.getCurrentUrl().startsWith(getConsumerRoot() + "/auth/realms/master/app/"));
 
@@ -1144,30 +1165,20 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         String url = assertEmailAndGetUrl(mail.getLastReceivedMessage(), MailServerConfiguration.FROM, USER_EMAIL,
                 "Someone wants to link your ");
         driver.navigate().to(url);
-
-        //confirm the account linking does not verify the email, the verify email required action follows
-        verifyEmailPage.assertCurrent();
-        assertFalse(adminClient.realm(bc.consumerRealmName()).users().get(consumerUser.getId()).toRepresentation().isEmailVerified());
-
-        assertEquals(2, mail.getReceivedMessages().length);
-        String verificationUrl = assertEmailAndGetUrl(mail.getLastReceivedMessage(), MailServerConfiguration.FROM, USER_EMAIL,
-                "verify your email address");
-        driver.navigate().to(verificationUrl.trim());
-
         //test if user is logged in
         assertTrue(driver.getCurrentUrl().startsWith(getConsumerRoot() + "/auth/realms/master/app/"));
         //test if the user has verified email
         assertTrue(adminClient.realm(bc.consumerRealmName()).users().get(consumerUser.getId()).toRepresentation().isEmailVerified());
 
         driver.navigate().to(url);
-        waitForPage(driver, "account linking already confirmed", false);
+        waitForPage(driver, "your email address has been verified already.", false);
         AccountHelper.logout(adminClient.realm(bc.consumerRealmName()), "consumer");
 
         driver.navigate().to(url);
-        waitForPage(driver, "account linking already confirmed", false);
+        waitForPage(driver, "your email address has been verified already.", false);
 
         driver2.navigate().to(url);
-        waitForPage(driver, "account linking already confirmed", false);
+        waitForPage(driver, "your email address has been verified already.", false);
     }
 
     @Test
@@ -1206,7 +1217,7 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         assertThat(driver2.findElement(By.id("kc-page-title")).getText(), startsWith("Confirm linking the account"));
         assertThat(driver2.findElement(By.className("instruction")).getText(), startsWith("If you link the account, you will also be able to login using account"));
         driver2.findElement(By.linkText("» Click here to proceed")).click();
-        assertThat(driver2.findElement(By.className("instruction")).getText(), startsWith("You successfully confirmed linking your account"));
+        assertThat(driver2.findElement(By.className("instruction")).getText(), startsWith("You successfully verified your email."));
 
         idpLinkEmailPage.continueLink();
 
@@ -1338,21 +1349,7 @@ public abstract class AbstractFirstBrokerLoginTest extends AbstractInitializedBa
         MatcherAssert.assertThat(link, Matchers.containsString("client_id=broker-app"));
         proceedLink.click();
 
-        assertThat(driver2.getPageSource(), Matchers.containsString("Please go back to your original browser and continue there with the login."));
-
-        //confirm the account linking does not verify the email
-        assertFalse(consumerRealm.users().get(linkedUserId).toRepresentation().isEmailVerified());
-
-        idpLinkEmailPage.continueLink();
-        verifyEmailPage.assertCurrent();
-
-        assertEquals(2, mail.getReceivedMessages().length);
-        String verificationUrl = assertEmailAndGetUrl(mail.getLastReceivedMessage(), MailServerConfiguration.FROM, USER_EMAIL,
-                "verify your email address");
-        driver.navigate().to(verificationUrl.trim());
-
-        //test if user is logged in and redirected to the client used for the login, which is preserved
-        assertTrue(driver.getCurrentUrl().startsWith(getConsumerRoot() + "/auth/realms/" + bc.consumerRealmName() + "/app"));
+        assertThat(driver2.getPageSource(), Matchers.containsString("You successfully verified your email. Please go back to your original browser and continue there with the login."));
 
         //test if the user has verified email
         assertTrue(consumerRealm.users().get(linkedUserId).toRepresentation().isEmailVerified());

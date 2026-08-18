@@ -17,6 +17,8 @@
 
 package org.keycloak.it.cli.dist;
 
+import java.util.concurrent.TimeUnit;
+
 import org.keycloak.it.jaxrs.filter.TestFilterTestProvider;
 import org.keycloak.it.junit5.extension.CLIResult;
 import org.keycloak.it.junit5.extension.DistributionTest;
@@ -25,6 +27,7 @@ import org.keycloak.it.junit5.extension.RawDistOnly;
 import org.keycloak.it.junit5.extension.StopServer.Mode;
 import org.keycloak.it.junit5.extension.TestProvider;
 
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -45,6 +48,7 @@ public class JaxRsDistTest {
 
         assertEquals(200, when().get("/").getStatusCode());
 
-        cliResult.assertMessage("Request GET / has context request true has keycloaksession true");
+        Awaitility.await().atMost(5, TimeUnit.SECONDS).untilAsserted(
+                () -> cliResult.assertMessage("Request GET / has context request true has keycloaksession true"));
     }
 }

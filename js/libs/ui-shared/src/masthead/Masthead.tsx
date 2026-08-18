@@ -96,11 +96,7 @@ const KeycloakMasthead = ({
   return (
     <Masthead {...rest}>
       <MastheadToggle>
-        <PageToggleButton
-          data-testid="nav-toggle"
-          variant="plain"
-          aria-label={t("navigation")}
-        >
+        <PageToggleButton variant="plain" aria-label={t("navigation")}>
           <BarsIcon />
         </PageToggleButton>
       </MastheadToggle>

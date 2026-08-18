@@ -31,7 +31,7 @@ export const ImportKeyDialog = ({
   save,
   toggleDialog,
   title = "generateKeys",
-  description = "importKeysDescription",
+  description = "generateKeysDescription",
 }: ImportKeyDialogProps) => {
   const { t } = useTranslation();
   const form = useForm<ImportFile>();

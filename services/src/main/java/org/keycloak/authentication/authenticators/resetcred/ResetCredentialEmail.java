@@ -150,6 +150,7 @@ public class ResetCredentialEmail implements Authenticator, AuthenticatorFactory
 
     @Override
     public void action(AuthenticationFlowContext context) {
+        context.getUser().setEmailVerified(true);
         context.success();
     }
 

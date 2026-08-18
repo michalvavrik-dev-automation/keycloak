@@ -24,10 +24,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.keycloak.json.StringListMap;
+import org.keycloak.json.StringListMapDeserializer;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
 /**
  * @author <a href="mailto:psilva@redhat.com">Pedro Igor</a>
@@ -38,7 +38,7 @@ public class PermissionRequest {
     private Set<String> scopes;
     private String resourceServerId;
 
-    @StringListMap
+    @JsonDeserialize(using = StringListMapDeserializer.class)
     private Map<String, List<String>> claims;
 
     public PermissionRequest(String resourceId, String... scopes) {

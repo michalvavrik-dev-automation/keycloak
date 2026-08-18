@@ -31,10 +31,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Stream;
 
-import org.keycloak.common.crypto.CryptoIntegration;
 import org.keycloak.common.util.KeystoreUtil;
 import org.keycloak.common.util.KeystoreUtil.KeystoreFormat;
-import org.keycloak.common.util.KeystoreUtil.TruststoreFormat;
 
 import org.jboss.logging.Logger;
 
@@ -58,24 +56,14 @@ public class TruststoreBuilder {
     public static void setSystemTruststore(String[] truststores,
                                            boolean trustStoreIncludeDefault,
                                            String dataDir) {
-        setSystemTruststore(truststores, trustStoreIncludeDefault, dataDir, null);
-    }
-
-    public static void setSystemTruststore(String[] truststores,
-                                           boolean trustStoreIncludeDefault,
-                                           String dataDir,
-                                           TruststoreFormat preferredTruststoreType) {
-        TruststoreFormat truststoreType = preferredTruststoreType == null
-                ? getPreferredGeneratedTrustStoreType()
-                : preferredTruststoreType;
-        KeyStore truststore = createMergedTruststore(truststores, trustStoreIncludeDefault, truststoreType);
+        KeyStore truststore = createMergedTruststore(truststores, trustStoreIncludeDefault);
 
         // save with a dummy password just in case some logic that uses the system properties needs to have one
-        File file = saveTruststore(truststore, truststoreType, dataDir, DUMMY_PASSWORD.toCharArray());
+        File file = saveTruststore(truststore, dataDir, DUMMY_PASSWORD.toCharArray());
 
         // finally update the system properties
         System.setProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_KEY, file.getAbsolutePath());
-        System.setProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_TYPE_KEY, truststoreType.name());
+        System.setProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_TYPE_KEY, PKCS12);
         System.setProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_PASSWORD_KEY, DUMMY_PASSWORD);
     }
 
@@ -109,28 +97,17 @@ public class TruststoreBuilder {
     }
 
     static File saveTruststore(KeyStore truststore, String dataDir, char[] password) {
-        return saveTruststore(truststore, TruststoreFormat.PKCS12, dataDir, password);
-    }
-
-    static File saveTruststore(KeyStore truststore, TruststoreFormat truststoreType, String dataDir, char[] password) {
-        File file = new File(dataDir, "keycloak-truststore." + truststoreType.getPrimaryExtension());
+        File file = new File(dataDir, "keycloak-truststore.p12");
         file.getParentFile().mkdirs();
         try (FileOutputStream fos = new FileOutputStream(file)) {
-            if (truststoreType == TruststoreFormat.PKCS12) {
-                // this should inhibit the use of encryption in storing the certs
-                // it's of course not concurrency safe, but it should only be run at startup
-                String oldValue = System.setProperty(CERT_PROTECTION_ALGORITHM_KEY, "NONE");
-                try {
-                    truststore.store(fos, password);
-                } finally {
-                    if (oldValue != null) {
-                        System.setProperty(CERT_PROTECTION_ALGORITHM_KEY, oldValue);
-                    } else {
-                        System.getProperties().remove(CERT_PROTECTION_ALGORITHM_KEY);
-                    }
-                }
+            // this should inhibit the use of encryption in storing the certs
+            // it's of course not concurrency safe, but it should only be run at startup
+            String oldValue = System.setProperty(CERT_PROTECTION_ALGORITHM_KEY, "NONE");
+            truststore.store(fos, password);
+            if (oldValue != null) {
+                System.setProperty(CERT_PROTECTION_ALGORITHM_KEY, oldValue);
             } else {
-                truststore.store(fos, password);
+                System.getProperties().remove(CERT_PROTECTION_ALGORITHM_KEY);
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to save truststore: " + file.getAbsolutePath(), e);
@@ -139,11 +116,7 @@ public class TruststoreBuilder {
     }
 
     static KeyStore createMergedTruststore(String[] truststores, boolean trustStoreIncludeDefault) {
-        return createMergedTruststore(truststores, trustStoreIncludeDefault, getPreferredGeneratedTrustStoreType());
-    }
-
-    static KeyStore createMergedTruststore(String[] truststores, boolean trustStoreIncludeDefault, TruststoreFormat truststoreType) {
-        KeyStore truststore = createTrustStore(truststoreType);
+        KeyStore truststore = createPkcs12KeyStore();
 
         if (trustStoreIncludeDefault) {
             includeDefaultTruststore(truststore);
@@ -176,28 +149,13 @@ public class TruststoreBuilder {
     }
 
     static KeyStore createPkcs12KeyStore() {
-        return createTrustStore(TruststoreFormat.PKCS12);
-    }
-
-    static KeyStore createGeneratedTrustStore() {
-        return createTrustStore(getPreferredGeneratedTrustStoreType());
-    }
-
-    static KeyStore createTrustStore(TruststoreFormat truststoreType) {
-        if (!truststoreType.isJavaTrustStore()) {
-            throw new IllegalArgumentException(truststoreType.name() + " is not a Java KeyStore truststore format");
-        }
         try {
-            KeyStore truststore = CryptoIntegration.getProvider().getTrustStore(truststoreType);
+            KeyStore truststore = KeyStore.getInstance(PKCS12);
             truststore.load(null, null);
             return truststore;
         } catch (Exception e) {
-            throw new RuntimeException("Failed to initialize truststore: cannot create a " + truststoreType + " keystore", e);
+            throw new RuntimeException("Failed to initialize truststore: cannot create a PKCS12 keystore", e);
         }
-    }
-
-    static TruststoreFormat getPreferredGeneratedTrustStoreType() {
-        return CryptoIntegration.getProvider().getPreferredGeneratedTrustStoreType();
     }
 
     /**

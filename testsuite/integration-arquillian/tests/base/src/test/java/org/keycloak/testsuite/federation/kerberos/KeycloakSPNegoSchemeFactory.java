@@ -43,27 +43,20 @@ import org.ietf.jgss.Oid;
 public class KeycloakSPNegoSchemeFactory extends SPNegoSchemeFactory {
 
     private final CommonKerberosConfig kerberosConfig;
-    private final boolean credDelegEnabled;
 
     private String username;
     private String password;
-    private GSSContext gssContext;
 
 
-    public KeycloakSPNegoSchemeFactory(CommonKerberosConfig kerberosConfig, boolean credDelegEnabled) {
+    public KeycloakSPNegoSchemeFactory(CommonKerberosConfig kerberosConfig) {
         super(true, false);
         this.kerberosConfig = kerberosConfig;
-        this.credDelegEnabled = credDelegEnabled;
     }
 
 
     public void setCredentials(String username, String password) {
         this.username = username;
         this.password = password;
-    }
-
-    public GSSContext getGssContext() {
-        return gssContext;
     }
 
 
@@ -125,10 +118,10 @@ public class KeycloakSPNegoSchemeFactory extends SPNegoSchemeFactory {
                 GSSManager manager = getManager();
                 String httPrincipal = kerberosConfig.getServerPrincipal().replaceFirst("/.*@", "/" + authServer + "@");
                 GSSName serverName = manager.createName(httPrincipal, null);
-                gssContext = manager.createContext(
+                GSSContext gssContext = manager.createContext(
                         serverName.canonicalize(oid), oid, null, GSSContext.DEFAULT_LIFETIME);
                 gssContext.requestMutualAuth(true);
-                gssContext.requestCredDeleg(credDelegEnabled);
+                gssContext.requestCredDeleg(true);
                 byte[] outputToken = gssContext.initSecContext(token, 0, token.length);
 
                 ByteArrayHolder result = new ByteArrayHolder();

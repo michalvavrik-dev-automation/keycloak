@@ -270,9 +270,6 @@ public class SubjectImpersonationTokenExchangeV1Test extends AbstractKeycloakTes
 
         org.keycloak.testsuite.util.oauth.AccessTokenResponse tokenResponse = oauth.doPasswordGrantRequest("user", "password");
         String accessToken = tokenResponse.getAccessToken();
-        TokenVerifier<AccessToken> accessTokenVerifier = TokenVerifier.create(accessToken, AccessToken.class);
-        AccessToken token = accessTokenVerifier.parse().getToken();
-        String userId = token.getSubject();
 
         try (Response response = exchangeUrl.request()
                 .header(HttpHeaders.AUTHORIZATION, BasicAuthHelper.createHeader("client-exchanger", "secret"))
@@ -290,8 +287,7 @@ public class SubjectImpersonationTokenExchangeV1Test extends AbstractKeycloakTes
             JsonNode json = oauth.doIntrospectionAccessTokenRequest(exchangedTokenString).asJsonNode();
             assertTrue(json.get("active").asBoolean());
             assertEquals("impersonated-user", json.get("preferred_username").asText());
-            assertEquals(userId, json.get("act").get("sub").asText());
-            assertEquals("user", json.get("act").get("preferred_username").asText());
+            assertEquals("user", json.get("act").get("sub").asText());
         }
 
         try (Response response = exchangeUrl.request()
@@ -311,8 +307,7 @@ public class SubjectImpersonationTokenExchangeV1Test extends AbstractKeycloakTes
             JsonNode json = oauth.doIntrospectionAccessTokenRequest(exchangedTokenString).asJsonNode();
             assertTrue(json.get("active").asBoolean());
             assertEquals("impersonated-user", json.get("preferred_username").asText());
-            assertEquals(userId, json.get("act").get("sub").asText());
-            assertEquals("user", json.get("act").get("preferred_username").asText());
+            assertEquals("user", json.get("act").get("sub").asText());
         }
     }
 

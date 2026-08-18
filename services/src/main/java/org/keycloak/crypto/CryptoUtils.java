@@ -30,16 +30,12 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.provider.ProviderFactory;
 import org.keycloak.util.Strings;
 
-import org.jboss.logging.Logger;
-
 /**
  * Utility class for common cryptographic operations and algorithm discovery.
  *
  * @author <a href="https://github.com/forkimenjeckayang">Forkim Akwichek</a>
  */
 public class CryptoUtils {
-
-    private static final Logger logger = Logger.getLogger(CryptoUtils.class);
 
     /**
      * Looks up a {@link SignatureProvider} for the given algorithm, throwing if none is registered.
@@ -50,7 +46,6 @@ public class CryptoUtils {
         }
         SignatureProvider signatureProvider = session.getProvider(SignatureProvider.class, algorithm);
         if (signatureProvider == null) {
-            logger.warnf("Unsupported token algorithm requested: %s", algorithm);
             throw new VerificationException("Unsupported token algorithm: " + algorithm);
         }
         return signatureProvider;

@@ -1,7 +1,14 @@
-<#import "divider.ftl" as divider>
 <#macro show social>
   <#assign useGrid = (social.providers?size gt 3)>
-  <@divider.or text=msg(useGrid?then("identity-provider-login-label-divider", "orLabel")) />
+  <div class="${properties.kcLoginSocialProvidersDivider!}">
+      <span class="${properties.kcLoginMainFooterHelperText!}">
+          <#if useGrid>
+              ${msg("identity-provider-login-label-divider")}
+          <#else>
+              ${msg("identity-provider-login-label-short")}
+          </#if>
+      </span>
+  </div>
   <div id="kc-social-providers" class="${properties.kcFormSocialAccountSectionClass!}">
       <ul class="${properties.kcFormSocialAccountListClass!} <#if useGrid>${properties.kcFormSocialAccountListGridClass!}</#if>">
           <#list social.providers as p>

@@ -47,9 +47,9 @@ public class WebAuthnConditionalUIAuthenticator extends WebAuthnPasswordlessAuth
     }
 
     @Override
-    protected Response createErrorResponse(AuthenticationFlowContext context, final String errorCase, Object... parameters) {
+    protected Response createErrorResponse(AuthenticationFlowContext context, final String errorCase) {
         // the passkey failed, show error and maintain passkeys
-        context.form().setError(errorCase, parameters);
+        context.form().setError(errorCase, "");
         context.form().setAttribute(WebAuthnConstants.ENABLE_WEBAUTHN_CONDITIONAL_UI, Boolean.TRUE);
 
         AuthenticatorUtils.setupReauthenticationInUsernamePasswordFormError(context);

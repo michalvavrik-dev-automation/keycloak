@@ -14,7 +14,6 @@ import org.keycloak.representations.JsonWebToken;
 import org.keycloak.sdjwt.IssuerSignedJWT;
 import org.keycloak.sdjwt.vp.SdJwtVP;
 import org.keycloak.testframework.annotations.KeycloakIntegrationTest;
-import org.keycloak.tests.oid4vc.CredentialOfferStateUtils.CredentialOfferStateRecord;
 import org.keycloak.testsuite.util.oauth.AccessTokenResponse;
 import org.keycloak.testsuite.util.oauth.AuthorizationEndpointResponse;
 import org.keycloak.testsuite.util.oauth.oid4vc.CredentialOfferResponse;
@@ -27,12 +26,10 @@ import org.junit.jupiter.api.Test;
 import static org.keycloak.OID4VCConstants.CLAIM_NAME_VCT;
 import static org.keycloak.protocol.oid4vc.issuance.OID4VCIssuerEndpoint.DEFAULT_CREDENTIAL_OFFER_LIFESPAN_S;
 import static org.keycloak.protocol.oidc.OIDCLoginProtocol.PROMPT_VALUE_LOGIN;
-import static org.keycloak.tests.oid4vc.CredentialOfferStateUtils.getCredentialOfferStateRecord;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -69,12 +66,6 @@ public class OID4VCredentialOfferAuthCodeTest extends OID4VCIssuerTestBase {
         CredentialOfferURI offerURI = ctx.getCredentialsOfferUri();
         assertNotNull(offerURI, "No CredentialOfferURI");
 
-        // Verify internal offer state target user and client
-        //
-        CredentialOfferStateRecord runtimeOfferState = getCredentialOfferStateRecord(runOnServer, offerURI.getNonce());
-        assertNull(runtimeOfferState.targetUsername(), "Expected null targetUsername");
-        assertNull(runtimeOfferState.targetClientId(), "Expected null targetClientId");
-
         // Fetch credential offer again
         // https://github.com/keycloak/keycloak/issues/48014
         credOffer = wallet.credentialsOfferRequest(ctx, offerURI).send().getCredentialsOffer();
@@ -89,7 +80,7 @@ public class OID4VCredentialOfferAuthCodeTest extends OID4VCIssuerTestBase {
         verifyCredentialResponse(ctx, ctx.getHolder(), credResponse);
 
         // Attempt to fetch the credential offer again after it has been consumed
-        //
+
         CredentialOfferResponse res = wallet.credentialsOfferRequest(ctx, offerURI).send();
         assertEquals("invalid_credential_offer_request", res.getError());
         assertEquals("Credential offer not found or already consumed", res.getErrorDescription());
@@ -247,15 +238,6 @@ public class OID4VCredentialOfferAuthCodeTest extends OID4VCIssuerTestBase {
 
         String issuerState = credOffer.getIssuerState();
         assertNotNull(issuerState, "No IssuerState");
-
-        CredentialOfferURI offerURI = ctx.getCredentialsOfferUri();
-        assertNotNull(offerURI, "No CredentialOfferURI");
-
-        // Verify internal target user and client
-        //
-        CredentialOfferStateRecord runtimeOfferState = getCredentialOfferStateRecord(runOnServer, offerURI.getNonce());
-        assertEquals("alice", runtimeOfferState.targetUsername());
-        assertNull(runtimeOfferState.targetClientId(), "targetClientId should be null");
 
         // Send AuthorizationRequest
         //

@@ -89,10 +89,6 @@ public interface ClientService extends Service {
                     .reduce(Comparator::thenComparing)
                     .orElseThrow();
         }
-
-        public List<SortOption<ClientField>> getSortOptions() {
-            return sortOptions;
-        }
     }
 
     record CreateOrUpdateResult(BaseClientRepresentation representation, boolean created) {}
@@ -100,6 +96,8 @@ public interface ClientService extends Service {
     Optional<BaseClientRepresentation> getClient(RealmModel realm, String clientId) throws ServiceException;
 
     Stream<BaseClientRepresentation> getClients(RealmModel realm, ClientProjectionOptions projectionOptions, ClientSearchOptions searchOptions, ClientSortAndSliceOptions sortAndSliceOptions);
+
+    Stream<BaseClientRepresentation> deleteClients(RealmModel realm, ClientSearchOptions searchOptions);
 
     void deleteClient(RealmModel realm, String clientId) throws ServiceException;
 

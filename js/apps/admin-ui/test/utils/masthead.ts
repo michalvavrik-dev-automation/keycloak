@@ -1,12 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, Page } from "@playwright/test";
 
-const ALERT_TIMEOUT = 15_000;
-
 export async function assertNotificationMessage(page: Page, message: string) {
-  const alert = page.getByTestId("last-alert");
-  await expect(alert).toBeVisible({ timeout: ALERT_TIMEOUT });
-  await expect(alert).toHaveText(message, { timeout: ALERT_TIMEOUT });
+  await expect(page.getByTestId("last-alert")).toHaveText(message);
 }
 
 function getActionToggleButton(page: Page) {

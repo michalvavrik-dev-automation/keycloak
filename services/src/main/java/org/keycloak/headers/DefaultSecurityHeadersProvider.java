@@ -25,12 +25,10 @@ import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedMap;
 
-import org.keycloak.OAuthErrorException;
 import org.keycloak.models.BrowserSecurityHeaders;
 import org.keycloak.models.ContentSecurityPolicyBuilder;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
-import org.keycloak.representations.idm.OAuth2ErrorRepresentation;
 
 import org.jboss.logging.Logger;
 
@@ -73,13 +71,7 @@ public class DefaultSecurityHeadersProvider implements SecurityHeadersProvider {
             return;
         }
 
-        MediaType requestType;
-        try {
-            requestType = requestContext.getMediaType();
-        } catch (IllegalArgumentException ignored) {
-            requestType = null;
-        }
-
+        MediaType requestType = requestContext.getMediaType();
         MediaType responseType = responseContext.getMediaType();
         MultivaluedMap<String, Object> headers = responseContext.getHeaders();
 
@@ -142,7 +134,10 @@ public class DefaultSecurityHeadersProvider implements SecurityHeadersProvider {
     }
 
     private void addHeader(BrowserSecurityHeaders header, MultivaluedMap<String, Object> headers) {
-        SecurityHeadersUtils.addHeader(header, headerValues, (headerName, value) -> headers.putSingle(headerName, value));
+        String value = headerValues.getOrDefault(header.getKey(), header.getDefaultValue());
+        if (value != null && !value.isEmpty()) {
+            headers.putSingle(header.getHeaderName(), value);
+        }
     }
 
     /**
@@ -168,11 +163,6 @@ public class DefaultSecurityHeadersProvider implements SecurityHeadersProvider {
                 case HEAD:
                     return status == 200;
             }
-        }
-
-        if (responseContext.getStatus() == 400 && responseContext.getEntity() instanceof OAuth2ErrorRepresentation resp
-                && OAuthErrorException.INVALID_REQUEST.equals(resp.getError())) {
-            return true;
         }
 
         return false;

@@ -39,13 +39,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  */
 public class AccessToken extends IDToken {
 
-    // Access token claims
-    public static final String REALM_ACCESS = "realm_access";
-    public static final String RESOURCE_ACCESS = "resource_access";
-    public static final String ROLES = "roles";
-
     public static class Access implements Serializable {
-        @JsonProperty(ROLES)
+        @JsonProperty("roles")
         protected Set<String> roles;
         @JsonProperty("verify_caller")
         protected Boolean verifyCaller;
@@ -152,10 +147,10 @@ public class AccessToken extends IDToken {
     @JsonProperty("allowed-origins")
     protected Set<String> allowedOrigins;
 
-    @JsonProperty(REALM_ACCESS)
+    @JsonProperty("realm_access")
     protected Access realmAccess;
 
-    @JsonProperty(RESOURCE_ACCESS)
+    @JsonProperty("resource_access")
     protected Map<String, Access> resourceAccess;
 
     @JsonProperty("authorization")

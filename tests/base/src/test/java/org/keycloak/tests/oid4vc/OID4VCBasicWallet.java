@@ -148,16 +148,13 @@ public class OID4VCBasicWallet {
         // Create CredentialOfferURI
         //
         CredentialOfferUriResponse credOfferUriRes;
-        CredentialOfferUriRequest uriRequest = null;
         try {
             String credConfigId = ctx.getCredentialConfigurationId();
-            uriRequest = credentialOfferUriRequest(ctx, credConfigId);
+            var uriRequest = credentialOfferUriRequest(ctx, credConfigId);
             consumer.accept(uriRequest.bearerToken(issToken));
             credOfferUriRes = uriRequest.send();
         } finally {
-            if (uriRequest == null || !uriRequest.isPreAuthorized()) {
-                logout(ctx.getIssuer());
-            }
+            logout(ctx.getIssuer());
         }
 
         return credOfferUriRes.getCredentialOfferURI();

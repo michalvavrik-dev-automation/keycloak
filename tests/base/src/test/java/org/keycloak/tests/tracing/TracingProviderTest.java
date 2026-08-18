@@ -13,6 +13,7 @@ import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.TraceFlags;
 import io.opentelemetry.sdk.trace.ReadableSpan;
 import io.opentelemetry.sdk.trace.data.ExceptionEventData;
 import io.opentelemetry.sdk.trace.data.StatusData;
@@ -83,7 +84,7 @@ public class TracingProviderTest {
 
                 var context = current.getSpanContext();
                 assertThat(context, is(span.getSpanContext()));
-                assertThat(context.getTraceFlags().isSampled(), is(true));
+                assertThat(context.getTraceFlags(), is(TraceFlags.getSampled()));
                 assertThat(current.isRecording(), is(true));
 
                 assertThat(current instanceof ReadableSpan, is(true));

@@ -14,9 +14,6 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 public class WaitUtils {
 
-    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(5);
-    private static final Duration POLL_INTERVAL = Duration.ofMillis(50);
-
     private final ManagedWebDriver managed;
 
     WaitUtils(ManagedWebDriver managed) {
@@ -24,15 +21,9 @@ public class WaitUtils {
     }
 
     public WaitUtils waitForPage(AbstractPage page) {
-        return waitForPage(page, DEFAULT_TIMEOUT);
-    }
-
-    public WaitUtils waitForPage(AbstractPage page, Duration timeout) {
         String expectedPageId = page.getExpectedPageId();
         try {
-            new WebDriverWait(managed.driver(), timeout, POLL_INTERVAL)
-                    .ignoring(StaleElementReferenceException.class)
-                    .until(d -> expectedPageId.equals(managed.page().getCurrentPageId()));
+            createDefaultWait().ignoring(StaleElementReferenceException.class).until(d -> expectedPageId.equals(managed.page().getCurrentPageId()));
         } catch (TimeoutException e) {
             Assertions.fail("Expected page '" + expectedPageId + "' to be loaded, but currently on page '" + managed.page().getCurrentPageId() + "' after timeout");
         }
@@ -63,7 +54,7 @@ public class WaitUtils {
     }
 
     private WebDriverWait createDefaultWait() {
-        return new WebDriverWait(managed.driver(), DEFAULT_TIMEOUT, POLL_INTERVAL);
+        return new WebDriverWait(managed.driver(), Duration.ofSeconds(5), Duration.ofMillis(50));
     }
 
 }

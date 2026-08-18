@@ -166,27 +166,17 @@ public class DenylistPasswordPolicyProviderTest {
     }
 
     @Test
-    public void testBloomFileWorksCorrectlyWithDuplicateHeavyFile() throws Exception {
-        // 10-line file with only 2 unique passwords — 80% duplicates
-        String content = "password1\npassword2\n"
-                + "password1\npassword1\npassword1\n"
-                + "password1\npassword1\npassword1\n"
-                + "password1\npassword1\n";
+    public void testFppMismatchStillLoadsSuccessfully() throws Exception {
+        Path txtFile = tempFolder.newFile("denylist.txt").toPath();
+        Files.writeString(txtFile, "mismatchpw\n");
 
-        Path txtFile = tempFolder.newFile("dupes.txt").toPath();
-        Files.writeString(txtFile, content);
-
-        Path bloomFile = txtFile.resolveSibling("dupes.txt.bloom");
-        DenylistPasswordPolicyProviderFactory.buildBloomFile(
-                txtFile, bloomFile, DenylistPasswordPolicyProviderFactory.DEFAULT_FALSE_POSITIVE_PROBABILITY);
+        double bloomFpp = 0.01;
+        double serverFpp = DenylistPasswordPolicyProviderFactory.DEFAULT_FALSE_POSITIVE_PROBABILITY;
+        DenylistPasswordPolicyProviderFactory.buildBloomFile(txtFile, txtFile.resolveSibling("denylist.txt.bloom"), bloomFpp);
 
         FileBasedPasswordDenylist denylist = new FileBasedPasswordDenylist(
-                tempFolder.getRoot().toPath(), "dupes.txt.bloom",
-                DenylistPasswordPolicyProviderFactory.DEFAULT_FALSE_POSITIVE_PROBABILITY, 0);
-
-        Assert.assertTrue(denylist.contains("password1"));
-        Assert.assertTrue(denylist.contains("password2"));
-        Assert.assertFalse(denylist.contains("notinlist"));
+                tempFolder.getRoot().toPath(), "denylist.txt.bloom", serverFpp, 0);
+        Assert.assertTrue("password must still be found despite fpp mismatch", denylist.contains("mismatchpw"));
     }
 
     private static void writeBloomFile(Path baseDir, String name, double fpp) throws IOException {

@@ -75,8 +75,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class RegisterTest extends AbstractTestRealmKeycloakTest {
 
-    private static final String EMAIL_ALREADY_EXISTS_ERROR_MESSAGE = "This email is already associated with an existing account.";
-
     @Rule
     public AssertEvents events = new AssertEvents(this);
 
@@ -135,7 +133,7 @@ public class RegisterTest extends AbstractTestRealmKeycloakTest {
         registerPage.register("firstName", "lastName", "test-user@localhost", "registerExistingUser", generatePassword());
 
         registerPage.assertCurrent();
-        assertEquals(EMAIL_ALREADY_EXISTS_ERROR_MESSAGE, registerPage.getInputAccountErrors().getEmailError());
+        assertEquals("Email already exists.", registerPage.getInputAccountErrors().getEmailError());
 
         // assert form keeps form fields on error
         assertEquals("firstName", registerPage.getFirstName());
@@ -609,7 +607,7 @@ public class RegisterTest extends AbstractTestRealmKeycloakTest {
             registerPage.registerWithEmailAsUsername("firstName", "lastName", "test-user@localhost", generatePassword());
 
             registerPage.assertCurrent();
-            assertEquals(EMAIL_ALREADY_EXISTS_ERROR_MESSAGE, registerPage.getInputAccountErrors().getEmailError());
+            assertEquals("Email already exists.", registerPage.getInputAccountErrors().getEmailError());
 
             EventAssertion.expectRegisterError(events.poll()).error("email_in_use").clientId(oauth.getClientId()).details(Details.USERNAME, "test-user@localhost").details(Details.EMAIL, "test-user@localhost");
         }

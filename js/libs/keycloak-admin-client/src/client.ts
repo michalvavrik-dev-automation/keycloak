@@ -145,9 +145,9 @@ export class KeycloakAdminClient {
     this.#accessTokenDecoded = decodeToken(token);
   }
 
-  public setRefreshToken(token?: string) {
+  public setRefreshToken(token: string) {
     this.refreshToken = token;
-    this.#refreshTokenDecoded = token ? decodeToken(token) : undefined;
+    this.#refreshTokenDecoded = decodeToken(token);
   }
 
   public async getAccessToken() {
@@ -183,11 +183,7 @@ export class KeycloakAdminClient {
     );
 
     this.setAccessToken(accessToken);
-
-    // The current refresh token remains valid if the response does not carry a new one.
-    if (refreshToken) {
-      this.setRefreshToken(refreshToken);
-    }
+    this.setRefreshToken(refreshToken);
   }
 
   public isTokenExpired(): boolean {
