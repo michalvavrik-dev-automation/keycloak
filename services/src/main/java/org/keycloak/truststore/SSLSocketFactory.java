@@ -72,17 +72,6 @@ public class SSLSocketFactory extends javax.net.ssl.SSLSocketFactory implements 
         return instance;
     }
 
-    /**
-     * Reload seam for the reloadable system truststore (issue #51680). The reload observer calls this so the next
-     * {@link #getDefault()} rebuilds the LDAPS socket factory from the refreshed {@link TruststoreProviderSingleton}.
-     * <p>
-     * RED-PHASE STUB: intentionally a no-op so the reload test fails for the right reason (a rotated CA is not picked
-     * up by {@code ldaps://}). The reload feature will implement this as {@code instance = null;}.
-     */
-    public static synchronized void reset() {
-        // TODO(#51680): set instance = null so getDefault() rebuilds from the current TruststoreProviderSingleton
-    }
-
     @Override
     public String[] getDefaultCipherSuites() {
         return sslsf.getDefaultCipherSuites();

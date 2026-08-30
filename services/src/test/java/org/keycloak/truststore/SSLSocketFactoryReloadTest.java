@@ -1,19 +1,3 @@
-/*
- * Copyright 2026 Red Hat, Inc. and/or its affiliates
- * and other contributors as indicated by the @author tags.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.keycloak.truststore;
 
 import java.io.IOException;
@@ -24,6 +8,7 @@ import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
+import java.util.List;
 import java.util.Map;
 
 import javax.net.ssl.KeyManagerFactory;
@@ -46,22 +31,6 @@ import org.junit.Test;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-/**
- * Reload test for the {@code ldaps://} (non-StartTLS) path of the LDAP client, which routes trust through the static
- * {@link SSLSocketFactory} named as {@code java.naming.ldap.factory.socket} in
- * {@code LDAPContextManager} (see {@code LDAPContextManager.java:245}). JNDI obtains it via the static
- * {@link SSLSocketFactory#getDefault()}, which caches a socket factory built once from
- * {@link TruststoreProviderSingleton}.
- *
- * <p>This drives a <em>real TLS handshake</em> against a local server whose certificate we control — i.e. it tests
- * what a new LDAPS connection attempt actually trusts, not "was reset called". A CA is rotated and the system
- * truststore reloaded; the next handshake must trust the new CA.
- *
- * <p>RED PHASE: fails at the post-reload assertion because {@link SSLSocketFactory#reset()} is currently a no-op, so
- * {@code getDefault()} keeps returning the stale factory built from the old truststore — "configured correctly,
- * worked before reload, certificate not reloaded". It is NOT a "does not exist" failure: the initial trust decision
- * succeeds, and the sanity checks pass.
- */
 public class SSLSocketFactoryReloadTest {
 
     private static final char[] PASSWORD = "password".toCharArray();
@@ -69,81 +38,74 @@ public class SSLSocketFactoryReloadTest {
     private CryptoProvider originalCryptoProvider;
 
     @Before
-    public void before() throws Exception {
+    public void setUpCryptoAndClearCachedFactory() throws Exception {
         originalCryptoProvider = CryptoIntegration.isInitialised() ? CryptoIntegration.getProvider() : null;
         CryptoIntegration.setProvider(new DefaultCryptoProvider());
-        clearStaticInstance(); // test hygiene: start from a clean static singleton (reset() is a no-op in the red phase)
+        clearCachedFactory();
     }
 
     @After
-    public void after() throws Exception {
-        clearStaticInstance();
+    public void restoreCrypto() throws Exception {
+        clearCachedFactory();
         TruststoreProviderSingleton.set(null);
         CryptoIntegration.setProvider(originalCryptoProvider);
     }
 
     @Test
     public void ldapsPicksUpRotatedCaAfterReload() throws Exception {
-        // Two independent CAs, each signing a localhost server certificate.
         KeyPair caKeyA = generateKeyPair();
-        X509Certificate caCertA = generateCa(caKeyA, "Test CA A");
+        X509Certificate caCertA = selfSignedCa(caKeyA, "Test CA A");
         KeyPair caKeyB = generateKeyPair();
-        X509Certificate caCertB = generateCa(caKeyB, "Test CA B");
+        X509Certificate caCertB = selfSignedCa(caKeyB, "Test CA B");
 
-        try (TestTlsServer serverA = new TestTlsServer(serverKeyStore(caKeyA, caCertA));
-             TestTlsServer serverB = new TestTlsServer(serverKeyStore(caKeyB, caCertB))) {
+        try (LocalTlsServer serverSignedByA = new LocalTlsServer(serverKeyStoreSignedBy(caKeyA, caCertA));
+             LocalTlsServer serverSignedByB = new LocalTlsServer(serverKeyStoreSignedBy(caKeyB, caCertB))) {
 
-            // The system truststore initially trusts CA A only.
             TruststoreProviderSingleton.set(providerTrusting(caCertA));
 
-            // Everything works before reload: an LDAPS-style connection to the A-signed server is trusted...
-            assertTrue("A-signed server should be trusted before reload", handshakeSucceeds(serverA.port));
-            // ...and the not-yet-trusted CA B is correctly rejected.
-            assertFalse("B-signed server should not be trusted before reload", handshakeSucceeds(serverB.port));
+            assertTrue(ldapsClientTrusts(serverSignedByA.port));
+            assertFalse(ldapsClientTrusts(serverSignedByB.port));
 
-            // Rotate the system truststore to CA B and reload.
-            TruststoreProviderSingleton.set(providerTrusting(caCertB));
-            SSLSocketFactory.reset();
+            SystemTruststoreReload.propagate(providerTrusting(caCertB));
 
-            // A new LDAPS connection attempt must now trust the rotated CA B.
-            assertTrue("B-signed server should be trusted after reload", handshakeSucceeds(serverB.port));
+            assertTrue(ldapsClientTrusts(serverSignedByB.port));
         }
     }
 
-    // --- helpers -----------------------------------------------------------------------------------------------------
-
-    private static boolean handshakeSucceeds(int port) throws IOException {
+    private static boolean ldapsClientTrusts(int port) throws IOException {
         try (SSLSocket socket = (SSLSocket) SSLSocketFactory.getDefault()
                 .createSocket(InetAddress.getLoopbackAddress().getHostAddress(), port)) {
-            // isolate the test to trust decisions; hostname verification is a separate concern (tls-hostname-verifier)
-            SSLParameters params = socket.getSSLParameters();
-            params.setEndpointIdentificationAlgorithm(null);
-            socket.setSSLParameters(params);
+            trustOnlyWithoutHostnameCheck(socket);
             socket.startHandshake();
             return true;
-        } catch (SSLException e) {
+        } catch (SSLException untrusted) {
             return false;
         }
     }
 
+    private static void trustOnlyWithoutHostnameCheck(SSLSocket socket) {
+        SSLParameters params = socket.getSSLParameters();
+        params.setEndpointIdentificationAlgorithm(null);
+        socket.setSSLParameters(params);
+    }
+
     private static KeyPair generateKeyPair() throws Exception {
-        KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
-        gen.initialize(2048);
-        return gen.generateKeyPair();
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        return generator.generateKeyPair();
     }
 
-    private static X509Certificate generateCa(KeyPair caKeyPair, String cn) {
-        return CryptoIntegration.getProvider().getCertificateUtils().generateV1SelfSignedCertificate(caKeyPair, cn);
+    private static X509Certificate selfSignedCa(KeyPair caKeyPair, String commonName) {
+        return CryptoIntegration.getProvider().getCertificateUtils().generateV1SelfSignedCertificate(caKeyPair, commonName);
     }
 
-    private static KeyStore serverKeyStore(KeyPair caKeyPair, X509Certificate caCert) throws Exception {
+    private static KeyStore serverKeyStoreSignedBy(KeyPair caKeyPair, X509Certificate caCert) throws Exception {
         KeyPair serverKeyPair = generateKeyPair();
         X509Certificate serverCert = CryptoIntegration.getProvider().getCertificateUtils()
                 .generateV3Certificate(serverKeyPair, caKeyPair.getPrivate(), caCert, "localhost");
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
         keyStore.load(null, null);
-        keyStore.setKeyEntry("server", serverKeyPair.getPrivate(), PASSWORD,
-                new Certificate[] { serverCert, caCert });
+        keyStore.setKeyEntry("server", serverKeyPair.getPrivate(), PASSWORD, new Certificate[] { serverCert, caCert });
         return keyStore;
     }
 
@@ -151,20 +113,20 @@ public class SSLSocketFactoryReloadTest {
         KeyStore trustStore = KeyStore.getInstance("PKCS12");
         trustStore.load(null, null);
         trustStore.setCertificateEntry("ca", ca);
-        return new TestTruststoreProvider(trustStore);
+        return new FixedTruststoreProvider(trustStore);
     }
 
-    private static void clearStaticInstance() throws Exception {
+    private static void clearCachedFactory() throws Exception {
         Field instance = SSLSocketFactory.class.getDeclaredField("instance");
         instance.setAccessible(true);
         instance.set(null, null);
     }
 
-    /** Minimal {@link TruststoreProvider} that only supplies a truststore (all {@code getDefault()} needs). */
-    private static final class TestTruststoreProvider implements TruststoreProvider {
+    private static final class FixedTruststoreProvider implements TruststoreProvider {
+
         private final KeyStore truststore;
 
-        TestTruststoreProvider(KeyStore truststore) {
+        private FixedTruststoreProvider(KeyStore truststore) {
             this.truststore = truststore;
         }
 
@@ -184,12 +146,12 @@ public class SSLSocketFactoryReloadTest {
         }
 
         @Override
-        public Map<X500Principal, java.util.List<X509Certificate>> getRootCertificates() {
+        public Map<X500Principal, List<X509Certificate>> getRootCertificates() {
             return Map.of();
         }
 
         @Override
-        public Map<X500Principal, java.util.List<X509Certificate>> getIntermediateCertificates() {
+        public Map<X500Principal, List<X509Certificate>> getIntermediateCertificates() {
             return Map.of();
         }
 
@@ -199,12 +161,12 @@ public class SSLSocketFactoryReloadTest {
         }
 
         @Override
-        public Map<X500Principal, java.util.List<X509Certificate>> getHttpsRootCertificates() {
+        public Map<X500Principal, List<X509Certificate>> getHttpsRootCertificates() {
             return Map.of();
         }
 
         @Override
-        public Map<X500Principal, java.util.List<X509Certificate>> getHttpsIntermediateCertificates() {
+        public Map<X500Principal, List<X509Certificate>> getHttpsIntermediateCertificates() {
             return Map.of();
         }
 
@@ -213,33 +175,32 @@ public class SSLSocketFactoryReloadTest {
         }
     }
 
-    /** A local TLS server presenting the supplied key material; accepts and completes handshakes until closed. */
-    private static final class TestTlsServer implements AutoCloseable {
-        private final SSLServerSocket serverSocket;
-        private final Thread thread;
-        final int port;
-        private volatile boolean running = true;
+    private static final class LocalTlsServer implements AutoCloseable {
 
-        TestTlsServer(KeyStore keyStore) throws Exception {
-            KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-            kmf.init(keyStore, PASSWORD);
+        private final SSLServerSocket serverSocket;
+        private final Thread acceptThread;
+        private volatile boolean running = true;
+        final int port;
+
+        private LocalTlsServer(KeyStore keyStore) throws Exception {
+            KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+            keyManagerFactory.init(keyStore, PASSWORD);
             SSLContext context = SSLContext.getInstance("TLS");
-            context.init(kmf.getKeyManagers(), null, null);
+            context.init(keyManagerFactory.getKeyManagers(), null, null);
             serverSocket = (SSLServerSocket) context.getServerSocketFactory()
                     .createServerSocket(0, 0, InetAddress.getLoopbackAddress());
             port = serverSocket.getLocalPort();
-            thread = new Thread(this::acceptLoop, "test-tls-server-" + port);
-            thread.setDaemon(true);
-            thread.start();
+            acceptThread = new Thread(this::acceptUntilClosed, "local-tls-server-" + port);
+            acceptThread.setDaemon(true);
+            acceptThread.start();
         }
 
-        private void acceptLoop() {
+        private void acceptUntilClosed() {
             while (running) {
                 try (SSLSocket socket = (SSLSocket) serverSocket.accept()) {
                     socket.startHandshake();
                     socket.getInputStream().read();
-                } catch (Exception ignored) {
-                    // untrusted client handshake or server shutting down
+                } catch (Exception clientRejectedOrClosing) {
                 }
             }
         }
