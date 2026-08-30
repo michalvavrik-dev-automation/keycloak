@@ -20,6 +20,9 @@ public class TruststorePropertyMappers implements PropertyMapperGrouping {
                 fromOption(TruststoreOptions.HOSTNAME_VERIFICATION_POLICY)
                         .paramLabel(TruststoreOptions.HOSTNAME_VERIFICATION_POLICY.getKey())
                         .to("kc.spi-truststore--file--hostname-verification-policy")
+                        .build(),
+                fromOption(TruststoreOptions.TRUSTSTORE_PATHS_RELOAD_PERIOD)
+                        .paramLabel("reload period")
                         .build()
         );
     }

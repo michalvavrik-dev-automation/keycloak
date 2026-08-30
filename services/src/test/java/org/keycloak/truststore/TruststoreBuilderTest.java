@@ -19,7 +19,11 @@ package org.keycloak.truststore;
 
 import java.io.File;
 import java.net.URL;
+import java.nio.file.Files;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.security.KeyStore;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -29,6 +33,7 @@ import java.util.Map;
 import org.keycloak.common.crypto.CryptoIntegration;
 import org.keycloak.common.crypto.CryptoProvider;
 import org.keycloak.common.util.KeystoreUtil.TruststoreFormat;
+import org.keycloak.common.util.PemUtils;
 import org.keycloak.crypto.def.DefaultCryptoProvider;
 
 import org.junit.After;
@@ -39,6 +44,8 @@ import org.junit.rules.TemporaryFolder;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -233,6 +240,61 @@ public class TruststoreBuilderTest {
         TruststoreBuilder.includeKubernetesTrustStorePaths(trustStores, directory, "/non/existing/service-ca.crt");
 
         assertTrue(trustStores.isEmpty());
+    }
+
+    @Test
+    public void reMergeAfterFileContentReplacementReflectsNewCertificate() throws Exception {
+        File rotatingFile = temporaryFolder.newFile("rotating.pem");
+        X509Certificate before = generateCertificate("before");
+        writePemCertificate(rotatingFile, before);
+
+        KeyStore firstMerge = TruststoreBuilder.createMergedTruststore(new String[] { rotatingFile.getAbsolutePath() }, false);
+        assertNotNull(firstMerge.getCertificateAlias(before));
+
+        X509Certificate after = generateCertificate("after");
+        writePemCertificate(rotatingFile, after);
+
+        KeyStore secondMerge = TruststoreBuilder.createMergedTruststore(new String[] { rotatingFile.getAbsolutePath() }, false);
+        assertNotNull(secondMerge.getCertificateAlias(after));
+        assertNull(secondMerge.getCertificateAlias(before));
+    }
+
+    @Test
+    public void mergingMultipleFilesIncludesAllCertificates() throws Exception {
+        X509Certificate first = generateCertificate("first");
+        X509Certificate second = generateCertificate("second");
+        File firstFile = writePemCertificate(temporaryFolder.newFile("first.pem"), first);
+        File secondFile = writePemCertificate(temporaryFolder.newFile("second.pem"), second);
+
+        KeyStore merged = TruststoreBuilder.createMergedTruststore(
+                new String[] { firstFile.getAbsolutePath(), secondFile.getAbsolutePath() }, false);
+
+        assertNotNull(merged.getCertificateAlias(first));
+        assertNotNull(merged.getCertificateAlias(second));
+    }
+
+    @Test
+    public void sameCertificateInMultipleFilesIsStoredOnce() throws Exception {
+        X509Certificate certificate = generateCertificate("shared");
+        File firstFile = writePemCertificate(temporaryFolder.newFile("first.pem"), certificate);
+        File secondFile = writePemCertificate(temporaryFolder.newFile("second.pem"), certificate);
+
+        KeyStore merged = TruststoreBuilder.createMergedTruststore(
+                new String[] { firstFile.getAbsolutePath(), secondFile.getAbsolutePath() }, false);
+
+        assertEquals(1, Collections.list(merged.aliases()).size());
+    }
+
+    private static X509Certificate generateCertificate(String commonName) throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        KeyPair keyPair = generator.generateKeyPair();
+        return CryptoIntegration.getProvider().getCertificateUtils().generateV1SelfSignedCertificate(keyPair, commonName);
+    }
+
+    private static File writePemCertificate(File file, X509Certificate certificate) throws Exception {
+        Files.writeString(file.toPath(), PemUtils.addCertificateBeginEnd(PemUtils.encodeCertificate(certificate)));
+        return file;
     }
 
 }
