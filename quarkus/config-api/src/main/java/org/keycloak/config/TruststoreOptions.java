@@ -24,4 +24,9 @@ public class TruststoreOptions {
             .deprecatedValues("STRICT and WILDCARD have been deprecated, use DEFAULT instead.", HostnameVerificationPolicy.STRICT, HostnameVerificationPolicy.WILDCARD)
             .build();
 
+    public static final Option<String> TRUSTSTORE_PATHS_RELOAD_PERIOD = new OptionBuilder<>("truststore-paths-reload-period", String.class)
+            .category(OptionCategory.TRUSTSTORE)
+            .description("Interval on which to reload the system truststore material referenced by the truststore-paths option and the automatically discovered CA certificates. Must be greater than 30 seconds. If not set, the system truststore is not reloaded automatically.")
+            .build();
+
 }
