@@ -45,6 +45,7 @@ import org.junit.rules.TemporaryFolder;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -242,37 +243,53 @@ public class TruststoreBuilderTest {
     }
 
     @Test
-    public void reMergingWithAddedSourceIncludesNewCertificateAndKeepsExisting() throws Exception {
-        URL existing = TruststoreBuilderTest.class.getResource("/truststores/keycloak.pem");
-        X509Certificate addedCertificate = generateCertificate();
-        File addedFile = writePemCertificate(temporaryFolder.newFile("added.pem"), addedCertificate);
+    public void reMergeAfterFileContentReplacementReflectsNewCertificate() throws Exception {
+        File rotatingFile = temporaryFolder.newFile("rotating.pem");
+        X509Certificate before = generateCertificate("before");
+        writePemCertificate(rotatingFile, before);
 
-        KeyStore beforeReload = TruststoreBuilder.createMergedTruststore(new String[] { existing.getPath() }, false);
-        int beforeCount = Collections.list(beforeReload.aliases()).size();
+        KeyStore firstMerge = TruststoreBuilder.createMergedTruststore(new String[] { rotatingFile.getAbsolutePath() }, false);
+        assertNotNull(firstMerge.getCertificateAlias(before));
 
-        KeyStore afterReload = TruststoreBuilder.createMergedTruststore(
-                new String[] { existing.getPath(), addedFile.getAbsolutePath() }, false);
+        X509Certificate after = generateCertificate("after");
+        writePemCertificate(rotatingFile, after);
 
-        assertEquals(beforeCount + 1, Collections.list(afterReload.aliases()).size());
-        assertNotNull(afterReload.getCertificateAlias(addedCertificate));
+        KeyStore secondMerge = TruststoreBuilder.createMergedTruststore(new String[] { rotatingFile.getAbsolutePath() }, false);
+        assertNotNull(secondMerge.getCertificateAlias(after));
+        assertNull(secondMerge.getCertificateAlias(before));
     }
 
     @Test
-    public void duplicateCertificateFromMultipleSourcesIsDeduplicated() throws Exception {
-        URL existing = TruststoreBuilderTest.class.getResource("/truststores/keycloak.pem");
+    public void mergingMultipleFilesIncludesAllCertificates() throws Exception {
+        X509Certificate first = generateCertificate("first");
+        X509Certificate second = generateCertificate("second");
+        File firstFile = writePemCertificate(temporaryFolder.newFile("first.pem"), first);
+        File secondFile = writePemCertificate(temporaryFolder.newFile("second.pem"), second);
 
-        KeyStore single = TruststoreBuilder.createMergedTruststore(new String[] { existing.getPath() }, false);
-        KeyStore duplicated = TruststoreBuilder.createMergedTruststore(
-                new String[] { existing.getPath(), existing.getPath() }, false);
+        KeyStore merged = TruststoreBuilder.createMergedTruststore(
+                new String[] { firstFile.getAbsolutePath(), secondFile.getAbsolutePath() }, false);
 
-        assertEquals(Collections.list(single.aliases()).size(), Collections.list(duplicated.aliases()).size());
+        assertNotNull(merged.getCertificateAlias(first));
+        assertNotNull(merged.getCertificateAlias(second));
     }
 
-    private static X509Certificate generateCertificate() throws Exception {
+    @Test
+    public void sameCertificateInMultipleFilesIsStoredOnce() throws Exception {
+        X509Certificate certificate = generateCertificate("shared");
+        File firstFile = writePemCertificate(temporaryFolder.newFile("first.pem"), certificate);
+        File secondFile = writePemCertificate(temporaryFolder.newFile("second.pem"), certificate);
+
+        KeyStore merged = TruststoreBuilder.createMergedTruststore(
+                new String[] { firstFile.getAbsolutePath(), secondFile.getAbsolutePath() }, false);
+
+        assertEquals(1, Collections.list(merged.aliases()).size());
+    }
+
+    private static X509Certificate generateCertificate(String commonName) throws Exception {
         KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
         generator.initialize(2048);
         KeyPair keyPair = generator.generateKeyPair();
-        return CryptoIntegration.getProvider().getCertificateUtils().generateV1SelfSignedCertificate(keyPair, "added");
+        return CryptoIntegration.getProvider().getCertificateUtils().generateV1SelfSignedCertificate(keyPair, commonName);
     }
 
     private static File writePemCertificate(File file, X509Certificate certificate) throws Exception {

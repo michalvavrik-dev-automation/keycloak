@@ -6,7 +6,7 @@ import org.keycloak.testframework.server.KeycloakServerConfig;
 import org.keycloak.testframework.server.KeycloakServerConfigBuilder;
 
 @KeycloakIntegrationTest(config = TruststoreReloadTest.ServerConfig.class)
-class TruststoreReloadTest extends AbstractTruststoreReloadTest {
+public class TruststoreReloadTest extends AbstractTruststoreReloadTest {
 
     static class ServerConfig implements KeycloakServerConfig {
         @Override
