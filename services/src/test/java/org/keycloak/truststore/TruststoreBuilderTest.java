@@ -29,6 +29,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 import org.keycloak.common.crypto.CryptoIntegration;
 import org.keycloak.common.crypto.CryptoProvider;
@@ -159,6 +160,35 @@ public class TruststoreBuilderTest {
         TruststoreBuilder.saveTruststore(truststore, temporaryFolder.getRoot().getAbsolutePath(), null);
 
         assertEquals("OLD", System.getProperty(CERT_PROTECTION_ALGORITHM_KEY));
+    }
+
+    @Test
+    public void saveTruststoreDoesNotMutateGlobalCertProtectionAlgorithm() throws Exception {
+        List<String> mutations = new ArrayList<>();
+        Properties recording = new Properties() {
+            @Override
+            public synchronized Object setProperty(String key, String value) {
+                if (CERT_PROTECTION_ALGORITHM_KEY.equals(key)) {
+                    mutations.add(value);
+                }
+                return super.setProperty(key, value);
+            }
+        };
+        recording.putAll(System.getProperties());
+
+        KeyStore truststore = TruststoreBuilder.createPkcs12KeyStore();
+        truststore.setCertificateEntry("ca", generateCertificate("ca"));
+
+        Properties original = System.getProperties();
+        System.setProperties(recording);
+        try {
+            TruststoreBuilder.saveTruststore(truststore, temporaryFolder.getRoot().getAbsolutePath(), null);
+        } finally {
+            System.setProperties(original);
+        }
+
+        assertTrue("saveTruststore must not mutate the global " + CERT_PROTECTION_ALGORITHM_KEY
+                + ", but set it to " + mutations, mutations.isEmpty());
     }
 
     @Test

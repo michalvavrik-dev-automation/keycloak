@@ -12,17 +12,20 @@ import java.security.KeyStore;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
+import java.util.Enumeration;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.keycloak.common.crypto.CryptoIntegration;
+import org.keycloak.common.util.KeystoreUtil;
 import org.keycloak.common.util.PemUtils;
 import org.keycloak.connections.httpclient.HttpClientProvider;
 import org.keycloak.services.x509.X509ClientCertificateLookup;
 import org.keycloak.testframework.remote.runonserver.InjectRunOnServer;
 import org.keycloak.testframework.remote.runonserver.RunOnServerClient;
 import org.keycloak.truststore.SystemTruststoreReload;
+import org.keycloak.truststore.TruststoreBuilder;
 
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -82,7 +85,7 @@ abstract class AbstractTruststoreReloadTest {
             rotateSystemTruststoreTo(rotated.certificateAuthority);
             triggerReload();
 
-            awaitTrusted(() -> httpClientTrusts(url(rotated)));
+            awaitReloaded(() -> httpClientTrusts(url(rotated)) && !httpClientTrusts(url(trusted)));
         }
     }
 
@@ -95,7 +98,7 @@ abstract class AbstractTruststoreReloadTest {
             rotateSystemTruststoreTo(rotated.certificateAuthority);
             triggerReload();
 
-            awaitTrusted(() -> ldapsSocketFactoryTrusts(rotated.port()));
+            awaitReloaded(() -> ldapsSocketFactoryTrusts(rotated.port()) && !ldapsSocketFactoryTrusts(trusted.port()));
         }
     }
 
@@ -110,7 +113,24 @@ abstract class AbstractTruststoreReloadTest {
         rotateSystemTruststoreTo(rotatedCa);
         triggerReload();
 
-        awaitTrusted(() -> nginxLookupTrusts(rotatedSubject));
+        awaitReloaded(() -> nginxLookupTrusts(rotatedSubject) && !nginxLookupTrusts(startupTrustedSubject()));
+    }
+
+    @Test
+    void generatedTruststoreFileOnDiskIsRewrittenAfterReload() throws Exception {
+        X509Certificate rotatedCa = generateCertificateAuthority();
+        String rotatedSubject = rotatedCa.getSubjectX500Principal().getName();
+
+        assertTrue(generatedTruststoreFileContains(startupTrustedSubject()),
+                "startup ca must be persisted in the generated truststore file");
+        assertFalse(generatedTruststoreFileContains(rotatedSubject),
+                "fresh ca must not be in the generated truststore file before reload");
+
+        rotateSystemTruststoreTo(rotatedCa);
+        triggerReload();
+
+        awaitReloaded(() -> generatedTruststoreFileContains(rotatedSubject)
+                && !generatedTruststoreFileContains(startupTrustedSubject()));
     }
 
     private boolean httpClientTrusts(String url) {
@@ -161,12 +181,33 @@ abstract class AbstractTruststoreReloadTest {
         }, Boolean.class);
     }
 
+    private boolean generatedTruststoreFileContains(String subject) {
+        return runOnServer.fetch(session -> {
+            try {
+                KeyStore keyStore = KeystoreUtil.loadKeyStore(
+                        System.getProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_KEY),
+                        System.getProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_PASSWORD_KEY),
+                        System.getProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_TYPE_KEY));
+                for (Enumeration<String> aliases = keyStore.aliases(); aliases.hasMoreElements();) {
+                    Certificate certificate = keyStore.getCertificate(aliases.nextElement());
+                    if (certificate instanceof X509Certificate
+                            && ((X509Certificate) certificate).getSubjectX500Principal().getName().equals(subject)) {
+                        return Boolean.TRUE;
+                    }
+                }
+                return Boolean.FALSE;
+            } catch (Exception e) {
+                return Boolean.FALSE;
+            }
+        }, Boolean.class);
+    }
+
     private void triggerReload() {
         runOnServer.run(session -> SystemTruststoreReload.reload(session));
     }
 
-    private void awaitTrusted(Callable<Boolean> trusted) {
-        Awaitility.await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofMillis(500)).until(trusted);
+    private void awaitReloaded(Callable<Boolean> reloaded) {
+        Awaitility.await().atMost(Duration.ofSeconds(20)).pollInterval(Duration.ofMillis(500)).until(reloaded);
     }
 
     private static void rotateSystemTruststoreTo(X509Certificate certificateAuthority) throws IOException {

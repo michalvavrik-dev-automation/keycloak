@@ -68,26 +68,6 @@ public class SystemTruststoreMappingTest extends AbstractConfigurationTest {
     }
 
     @Test
-    public void threeJksFilesEachMapToTheirOwnBucket() {
-        createConfigFromCliArguments("--truststore-paths=/certs/a.jks,/certs/b.jks,/certs/c.jks");
-        assertExternalConfig(Map.of(
-                jksPath(0), "/certs/a.jks",
-                jksPath(1), "/certs/b.jks",
-                jksPath(2), "/certs/c.jks"
-        ));
-        assertExternalConfigNull(jksPath(3));
-    }
-
-    @Test
-    public void bcfksFileMapsToOtherBucketWithType() {
-        createConfigFromCliArguments("--truststore-paths=/certs/trust.bcfks");
-        assertExternalConfig(Map.of(
-                otherPath(0), "/certs/trust.bcfks",
-                otherType(0), "BCFKS"
-        ));
-    }
-
-    @Test
     public void allPkcs12ExtensionsMapToPkcs12Buckets() {
         createConfigFromCliArguments("--truststore-paths=/certs/a.p12,/certs/b.pfx,/certs/c.pkcs12");
         assertExternalConfig(Map.of(
@@ -98,20 +78,21 @@ public class SystemTruststoreMappingTest extends AbstractConfigurationTest {
     }
 
     @Test
-    public void mixedFormatsSplitAcrossBucketsByType() {
-        createConfigFromCliArguments("--truststore-paths="
-                + "/certs/ca.pem,/certs/a.jks,/certs/b.p12,/certs/c.pem,/certs/d.jks,/certs/e.p12,/certs/trust.bcfks");
+    public void mixedPemAndPkcs12SplitAcrossBuckets() {
+        createConfigFromCliArguments("--truststore-paths=/certs/ca.pem,/certs/b.p12,/certs/c.pem,/certs/e.p12");
         assertExternalConfig(Map.of(
                 pemCerts(), "/certs/ca.pem,/certs/c.pem",
-                jksPath(0), "/certs/a.jks",
-                jksPath(1), "/certs/d.jks",
                 pkcs12Path(0), "/certs/b.p12",
-                pkcs12Path(1), "/certs/e.p12",
-                otherPath(0), "/certs/trust.bcfks",
-                otherType(0), "BCFKS"
+                pkcs12Path(1), "/certs/e.p12"
         ));
-        assertExternalConfigNull(jksPath(2));
         assertExternalConfigNull(pkcs12Path(2));
+    }
+
+    @Test
+    public void unsupportedFormatsAreIgnored() {
+        createConfigFromCliArguments("--truststore-paths=/certs/ok.pem,/certs/ignored.jks,/certs/ignored.bcfks");
+        assertExternalConfig(pemCerts(), "/certs/ok.pem");
+        assertExternalConfigNull(pkcs12Path(0));
     }
 
     @Test
@@ -119,7 +100,6 @@ public class SystemTruststoreMappingTest extends AbstractConfigurationTest {
         createConfigFromCliArguments();
         assertExternalConfigNull(pemCerts());
         assertExternalConfigNull(pkcs12Path(0));
-        assertExternalConfigNull(jksPath(0));
     }
 
     @Test
@@ -149,18 +129,34 @@ public class SystemTruststoreMappingTest extends AbstractConfigurationTest {
     }
 
     @Test
-    public void directoryWithMixedFormatsSplitsAcrossBuckets() throws Exception {
+    public void directoryOfPkcs12FilesEachMapToOwnBucketInStableOrder() throws Exception {
+        File directory = temporaryFolder.newFolder("certs");
+        File first = writeKeyStore(new File(directory, "a.p12"), "PKCS12");
+        File second = writeKeyStore(new File(directory, "b.p12"), "PKCS12");
+        File third = writeKeyStore(new File(directory, "c.p12"), "PKCS12");
+        String[] sorted = sortedPaths(first, second, third).split(",");
+
+        createConfigFromCliArguments("--truststore-paths=" + directory.getAbsolutePath());
+
+        assertExternalConfig(Map.of(
+                pkcs12Path(0), sorted[0],
+                pkcs12Path(1), sorted[1],
+                pkcs12Path(2), sorted[2]
+        ));
+        assertExternalConfigNull(pkcs12Path(3));
+    }
+
+    @Test
+    public void directoryWithMixedPemAndPkcs12SplitsAcrossBuckets() throws Exception {
         File directory = temporaryFolder.newFolder("certs");
         File pem = writePemCertificate(new File(directory, "ca.pem"));
         File pkcs12 = writeKeyStore(new File(directory, "store.p12"), "PKCS12");
-        File jks = writeKeyStore(new File(directory, "legacy.jks"), "JKS");
 
         createConfigFromCliArguments("--truststore-paths=" + directory.getAbsolutePath());
 
         assertExternalConfig(Map.of(
                 pemCerts(), pem.getAbsolutePath(),
-                pkcs12Path(0), pkcs12.getAbsolutePath(),
-                jksPath(0), jks.getAbsolutePath()
+                pkcs12Path(0), pkcs12.getAbsolutePath()
         ));
     }
 
@@ -220,18 +216,6 @@ public class SystemTruststoreMappingTest extends AbstractConfigurationTest {
 
     private static String pkcs12Path(int index) {
         return bucket("-pkcs12-" + index, "trust-store.p12.path");
-    }
-
-    private static String jksPath(int index) {
-        return bucket("-jks-" + index, "trust-store.jks.path");
-    }
-
-    private static String otherPath(int index) {
-        return bucket("-bcfks-" + index, "trust-store.other.path");
-    }
-
-    private static String otherType(int index) {
-        return bucket("-bcfks-" + index, "trust-store.other.type");
     }
 
     private static String bucket(String suffix, String leaf) {
