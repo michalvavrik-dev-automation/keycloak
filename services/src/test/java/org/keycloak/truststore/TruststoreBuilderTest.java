@@ -163,7 +163,16 @@ public class TruststoreBuilderTest {
     }
 
     @Test
-    public void saveTruststoreDoesNotMutateGlobalCertProtectionAlgorithm() throws Exception {
+    public void reSaveOverExistingTruststoreDoesNotSetCertProtectionAlgorithm() throws Exception {
+        File dataDir = temporaryFolder.newFolder();
+
+        KeyStore startup = TruststoreBuilder.createPkcs12KeyStore();
+        startup.setCertificateEntry("startup", generateCertificate("startup"));
+
+        X509Certificate reloadedCertificate = generateCertificate("reloaded");
+        KeyStore updated = TruststoreBuilder.createPkcs12KeyStore();
+        updated.setCertificateEntry("reloaded", reloadedCertificate);
+
         List<String> mutations = new ArrayList<>();
         Properties recording = new Properties() {
             @Override
@@ -175,20 +184,25 @@ public class TruststoreBuilderTest {
             }
         };
         recording.putAll(System.getProperties());
-
-        KeyStore truststore = TruststoreBuilder.createPkcs12KeyStore();
-        truststore.setCertificateEntry("ca", generateCertificate("ca"));
-
         Properties original = System.getProperties();
         System.setProperties(recording);
+        int mutationsAfterInitialCreate;
         try {
-            TruststoreBuilder.saveTruststore(truststore, temporaryFolder.getRoot().getAbsolutePath(), null);
+            TruststoreBuilder.saveTruststore(startup, dataDir.getAbsolutePath(), null);
+            mutationsAfterInitialCreate = mutations.size();
+            TruststoreBuilder.saveTruststore(updated, dataDir.getAbsolutePath(), null);
         } finally {
             System.setProperties(original);
         }
 
-        assertTrue("saveTruststore must not mutate the global " + CERT_PROTECTION_ALGORITHM_KEY
-                + ", but set it to " + mutations, mutations.isEmpty());
+        assertTrue("initial truststore creation must set " + CERT_PROTECTION_ALGORITHM_KEY
+                + " (proves the recorder detects mutations)", mutationsAfterInitialCreate > 0);
+        assertEquals("re-saving over an existing truststore must not set " + CERT_PROTECTION_ALGORITHM_KEY
+                + " (mutations: " + mutations + ")", mutationsAfterInitialCreate, mutations.size());
+
+        KeyStore onDisk = TruststoreBuilder.loadStore(new File(dataDir, "keycloak-truststore.p12").getAbsolutePath(),
+                TruststoreBuilder.PKCS12, null);
+        assertNotNull(onDisk.getCertificateAlias(reloadedCertificate));
     }
 
     @Test
