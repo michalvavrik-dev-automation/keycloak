@@ -19,7 +19,12 @@ package org.keycloak.truststore;
 
 import java.io.File;
 import java.net.URL;
+import java.nio.file.Files;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.security.KeyStore;
+import java.security.cert.X509Certificate;
+import java.util.Base64;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -39,6 +44,7 @@ import org.junit.rules.TemporaryFolder;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -233,6 +239,48 @@ public class TruststoreBuilderTest {
         TruststoreBuilder.includeKubernetesTrustStorePaths(trustStores, directory, "/non/existing/service-ca.crt");
 
         assertTrue(trustStores.isEmpty());
+    }
+
+    @Test
+    public void reMergingWithAddedSourceIncludesNewCertificateAndKeepsExisting() throws Exception {
+        URL existing = TruststoreBuilderTest.class.getResource("/truststores/keycloak.pem");
+        X509Certificate addedCertificate = generateCertificate();
+        File addedFile = writePemCertificate(temporaryFolder.newFile("added.pem"), addedCertificate);
+
+        KeyStore beforeReload = TruststoreBuilder.createMergedTruststore(new String[] { existing.getPath() }, false);
+        int beforeCount = Collections.list(beforeReload.aliases()).size();
+
+        KeyStore afterReload = TruststoreBuilder.createMergedTruststore(
+                new String[] { existing.getPath(), addedFile.getAbsolutePath() }, false);
+
+        assertEquals(beforeCount + 1, Collections.list(afterReload.aliases()).size());
+        assertNotNull(afterReload.getCertificateAlias(addedCertificate));
+    }
+
+    @Test
+    public void duplicateCertificateFromMultipleSourcesIsDeduplicated() throws Exception {
+        URL existing = TruststoreBuilderTest.class.getResource("/truststores/keycloak.pem");
+
+        KeyStore single = TruststoreBuilder.createMergedTruststore(new String[] { existing.getPath() }, false);
+        KeyStore duplicated = TruststoreBuilder.createMergedTruststore(
+                new String[] { existing.getPath(), existing.getPath() }, false);
+
+        assertEquals(Collections.list(single.aliases()).size(), Collections.list(duplicated.aliases()).size());
+    }
+
+    private static X509Certificate generateCertificate() throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        KeyPair keyPair = generator.generateKeyPair();
+        return CryptoIntegration.getProvider().getCertificateUtils().generateV1SelfSignedCertificate(keyPair, "added");
+    }
+
+    private static File writePemCertificate(File file, X509Certificate certificate) throws Exception {
+        String pem = "-----BEGIN CERTIFICATE-----\n"
+                + Base64.getMimeEncoder(64, new byte[] { '\n' }).encodeToString(certificate.getEncoded())
+                + "\n-----END CERTIFICATE-----\n";
+        Files.writeString(file.toPath(), pem);
+        return file;
     }
 
 }

@@ -123,6 +123,14 @@ public class SystemTruststoreMappingTest extends AbstractConfigurationTest {
     }
 
     @Test
+    public void reloadPeriodAppliesToEachBucket() {
+        createConfigFromCliArguments("--truststore-paths=/certs/ca.pem,/certs/store.p12",
+                "--truststore-paths-reload-period=30s");
+        assertExternalConfig(bucket("", "reload-period"), "30s");
+        assertExternalConfig(bucket("-pkcs12-0", "reload-period"), "30s");
+    }
+
+    @Test
     public void directoryOfPemFilesFoldsIntoPemBucket() throws Exception {
         File directory = temporaryFolder.newFolder("certs");
         File first = writePemCertificate(new File(directory, "ca-a.pem"));
