@@ -24,7 +24,6 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.cert.X509Certificate;
-import java.util.Base64;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -34,6 +33,7 @@ import java.util.Map;
 import org.keycloak.common.crypto.CryptoIntegration;
 import org.keycloak.common.crypto.CryptoProvider;
 import org.keycloak.common.util.KeystoreUtil.TruststoreFormat;
+import org.keycloak.common.util.PemUtils;
 import org.keycloak.crypto.def.DefaultCryptoProvider;
 
 import org.junit.After;
@@ -276,10 +276,7 @@ public class TruststoreBuilderTest {
     }
 
     private static File writePemCertificate(File file, X509Certificate certificate) throws Exception {
-        String pem = "-----BEGIN CERTIFICATE-----\n"
-                + Base64.getMimeEncoder(64, new byte[] { '\n' }).encodeToString(certificate.getEncoded())
-                + "\n-----END CERTIFICATE-----\n";
-        Files.writeString(file.toPath(), pem);
+        Files.writeString(file.toPath(), PemUtils.addCertificateBeginEnd(PemUtils.encodeCertificate(certificate)));
         return file;
     }
 
