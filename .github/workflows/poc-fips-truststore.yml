@@ -1,0 +1,52 @@
+# POC workflow (dev-auto/keycloak-51680/unrelated-gh-poc only). All other workflows removed on this branch.
+name: poc-fips-truststore
+
+on:
+  push:
+    branches:
+      - dev-auto/keycloak-51680/unrelated-gh-poc
+
+permissions:
+  contents: read
+
+concurrency:
+  group: poc-fips-truststore-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reload-tests-base:
+    name: tests/base reload + change-detection (non-FIPS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      MAVEN_OPTS: -Xmx2560m
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build tests/base (skip tests)
+        run: |
+          ./mvnw -B -e -nsu -DskipTests -DskipExamples -DskipProtoLock=true \
+            -pl tests/base -am install
+
+      - name: Run reload + change-detection tests
+        run: |
+          set -o pipefail
+          ./mvnw -B -e -nsu test -pl tests/base \
+            -Dtest=TruststoreReloadTest,SystemTruststoreChangeDetectionTest \
+            -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee poc-test-output.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: poc-fips-truststore-logs
+          path: |
+            poc-test-output.log
+            tests/base/target/surefire-reports/**
