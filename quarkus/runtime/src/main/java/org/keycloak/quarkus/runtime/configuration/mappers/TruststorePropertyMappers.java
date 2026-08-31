@@ -3,6 +3,7 @@ package org.keycloak.quarkus.runtime.configuration.mappers;
 import java.util.List;
 
 import org.keycloak.config.TruststoreOptions;
+import org.keycloak.truststore.SystemTruststoreReload;
 
 import static org.keycloak.quarkus.runtime.configuration.mappers.PropertyMapper.fromOption;
 
@@ -23,6 +24,7 @@ public class TruststorePropertyMappers implements PropertyMapperGrouping {
                         .build(),
                 fromOption(TruststoreOptions.TRUSTSTORE_PATHS_RELOAD_PERIOD)
                         .paramLabel("reload period")
+                        .to("quarkus.tls.\"" + SystemTruststoreReload.TLS_BUCKET_PREFIX + "\".reload-period")
                         .build()
         );
     }

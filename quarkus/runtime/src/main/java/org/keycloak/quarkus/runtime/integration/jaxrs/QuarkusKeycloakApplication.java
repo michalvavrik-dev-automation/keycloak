@@ -27,7 +27,6 @@ import org.keycloak.config.BootstrapAdminOptions;
 import org.keycloak.config.ServerOptions;
 import org.keycloak.connections.jpa.JpaConnectionProvider;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.quarkus.runtime.Environment;
 import org.keycloak.quarkus.runtime.KeycloakMain;
 import org.keycloak.quarkus.runtime.configuration.Configuration;
@@ -39,14 +38,12 @@ import org.keycloak.services.DefaultKeycloakSessionFactory;
 import org.keycloak.services.ServicesLogger;
 import org.keycloak.services.managers.ApplianceBootstrap;
 import org.keycloak.services.resources.KeycloakApplication;
-import org.keycloak.truststore.SystemTruststoreReload;
 import org.keycloak.utils.StringUtil;
 
 import io.quarkus.arc.Arc;
 import io.quarkus.runtime.ShutdownDelayInitiatedEvent;
 import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
-import io.quarkus.tls.CertificateUpdatedEvent;
 import io.smallrye.common.annotation.Blocking;
 import org.eclipse.microprofile.context.ManagedExecutor;
 import org.jboss.logging.Logger;
@@ -100,16 +97,6 @@ public class QuarkusKeycloakApplication extends KeycloakApplication {
 
     void onShutdownDelayInitiatedEvent(@Observes ShutdownDelayInitiatedEvent event) {
         shutdownDelayInitiated();
-    }
-
-    void onSystemTruststoreUpdated(@Observes CertificateUpdatedEvent event) {
-        if (!event.name().startsWith(SystemTruststoreReload.TLS_BUCKET_PREFIX)) {
-            return;
-        }
-        DefaultKeycloakSessionFactory sessionFactory = getSessionFactory();
-        if (sessionFactory != null) {
-            KeycloakModelUtils.runJobInTransaction(sessionFactory, SystemTruststoreReload::reload);
-        }
     }
 
     @Override

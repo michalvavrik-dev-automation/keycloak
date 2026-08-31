@@ -14,8 +14,12 @@ import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Enumeration;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.keycloak.common.crypto.CryptoIntegration;
 import org.keycloak.common.util.KeystoreUtil;
@@ -34,6 +38,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.net.KeyCertOptions;
 import io.vertx.core.net.PfxOptions;
 import org.awaitility.Awaitility;
@@ -48,6 +53,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class TruststoreReloadTest {
 
     private static final Path TRUSTSTORE_FILE = Path.of(System.getProperty("java.io.tmpdir"), "kc-it-system-truststore.pem");
+    // Additional truststore-paths sources exercising the PKCS12, directory and mixed PEM+PKCS12 cases.
+    private static final Path NO_MAC_PKCS12_FILE = Path.of(System.getProperty("java.io.tmpdir"), "kc-it-system-truststore-nomac.p12");
+    private static final Path EMPTY_MAC_PKCS12_FILE = Path.of(System.getProperty("java.io.tmpdir"), "kc-it-system-truststore-emptymac.p12");
+    private static final Path TRUSTSTORE_DIR = Path.of(System.getProperty("java.io.tmpdir"), "kc-it-system-truststore-dir");
+    private static final Path DIR_PEM_FILE = TRUSTSTORE_DIR.resolve("dir-ca.pem");
+    private static final Path DIR_PKCS12_FILE = TRUSTSTORE_DIR.resolve("dir-ca.p12");
+    private static final Path MIXED_PEM_FILE = Path.of(System.getProperty("java.io.tmpdir"), "kc-it-system-truststore-mixed.pem");
+    private static final Path MIXED_PKCS12_FILE = Path.of(System.getProperty("java.io.tmpdir"), "kc-it-system-truststore-mixed.p12");
 
     private static final byte[] STARTUP_TRUSTED_CERTIFICATE = readResource("org/keycloak/tests/ssl/smtp-server.pem");
     private static final byte[] STARTUP_TRUSTED_KEYSTORE = readResource("org/keycloak/tests/ssl/smtp-server.p12");
@@ -58,7 +71,16 @@ public class TruststoreReloadTest {
     static {
         try {
             Files.write(TRUSTSTORE_FILE, STARTUP_TRUSTED_CERTIFICATE);
-        } catch (IOException e) {
+            // Every truststore-paths source must exist and be loadable when the server boots; seed the
+            // additional PKCS12/PEM/directory sources empty so the reload tests can populate them later.
+            Files.createDirectories(TRUSTSTORE_DIR);
+            writeCertificatesToPem(DIR_PEM_FILE);
+            writeCertificatesToPem(MIXED_PEM_FILE);
+            writeNoMacPkcs12(NO_MAC_PKCS12_FILE);
+            writeNoMacPkcs12(DIR_PKCS12_FILE);
+            writeNoMacPkcs12(MIXED_PKCS12_FILE);
+            writeEmptyPasswordMacPkcs12(EMPTY_MAC_PKCS12_FILE);
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -88,6 +110,31 @@ public class TruststoreReloadTest {
 
             rotateSystemTruststoreTo(rotated.certificateAuthority);
             awaitReloaded(() -> httpClientTrusts(url(rotated)) && !httpClientTrusts(url(trusted)));
+        }
+    }
+
+    @Test
+    void reloadDoesNotAbortInFlightRequestAndItCompletesAfterRelease() throws Exception {
+        // Reload is proactive (old certs still valid): a request already in flight on the previous truststore
+        // must keep running and complete; only new requests switch to the new truststore. The peer withholds
+        // its response until we release it, so the reload provably happens while the request is still open.
+        try (TlsPeer trusted = startHeldTrustedPeer(); TlsPeer rotated = startPeerWithFreshCa()) {
+            assertFalse(httpClientTrusts(url(rotated)), "fresh peer must not be trusted before reload");
+
+            startInFlightHttpRequest(url(trusted));
+            // The peer has received the request (connection open) but is withholding the response.
+            Awaitility.await().atMost(Duration.ofSeconds(10)).until(trusted::hasReceivedRequest);
+            assertFalse(inFlightHttpRequestFinished(), "request must still be in flight before the reload");
+
+            rotateSystemTruststoreTo(rotated.certificateAuthority);
+            awaitReloaded(() -> httpClientTrusts(url(rotated)));
+
+            // The reload happened while the request was still open — it must NOT have been aborted.
+            assertFalse(inFlightHttpRequestFinished(),
+                    "a system-truststore reload must not abort an in-flight request");
+
+            trusted.release();
+            assertTrue(inFlightHttpRequestSucceeded(), "the released in-flight request must complete successfully");
         }
     }
 
@@ -129,6 +176,70 @@ public class TruststoreReloadTest {
                 && !generatedTruststoreFileContains(startupTrustedSubject()));
     }
 
+    @Test
+    void noMacPkcs12TruststorePathPicksUpRotatedCaAfterReload() throws Exception {
+        // A PKCS12 truststore-paths file with no MAC (KeyStore#store with a null password).
+        try (TlsPeer initial = startPeerWithFreshCa(); TlsPeer rotated = startPeerWithFreshCa()) {
+            writeNoMacPkcs12(NO_MAC_PKCS12_FILE, initial.certificateAuthority);
+            awaitReloaded(() -> httpClientTrusts(url(initial)));
+            assertFalse(httpClientTrusts(url(rotated)), "fresh peer must not be trusted before rotation");
+
+            writeNoMacPkcs12(NO_MAC_PKCS12_FILE, rotated.certificateAuthority);
+            awaitReloaded(() -> httpClientTrusts(url(rotated)) && !httpClientTrusts(url(initial)));
+        }
+    }
+
+    @Test
+    void emptyPasswordMacPkcs12TruststorePathPicksUpRotatedCaAfterReload() throws Exception {
+        // A PKCS12 truststore-paths file with an empty-password MAC (KeyStore#store with "".toCharArray()).
+        try (TlsPeer initial = startPeerWithFreshCa(); TlsPeer rotated = startPeerWithFreshCa()) {
+            writeEmptyPasswordMacPkcs12(EMPTY_MAC_PKCS12_FILE, initial.certificateAuthority);
+            awaitReloaded(() -> httpClientTrusts(url(initial)));
+            assertFalse(httpClientTrusts(url(rotated)), "fresh peer must not be trusted before rotation");
+
+            writeEmptyPasswordMacPkcs12(EMPTY_MAC_PKCS12_FILE, rotated.certificateAuthority);
+            awaitReloaded(() -> httpClientTrusts(url(rotated)) && !httpClientTrusts(url(initial)));
+        }
+    }
+
+    @Test
+    void directoryTruststorePathPicksUpRotatedCaAfterReload() throws Exception {
+        // The truststore-path is a directory holding both a PEM and a PKCS12 file: a reload must re-scan the
+        // directory and pick up rotations in both files while dropping the previous certificates.
+        try (TlsPeer initialPem = startPeerWithFreshCa(); TlsPeer initialPkcs12 = startPeerWithFreshCa();
+                TlsPeer rotatedPem = startPeerWithFreshCa(); TlsPeer rotatedPkcs12 = startPeerWithFreshCa()) {
+            writeCertificatesToPem(DIR_PEM_FILE, initialPem.certificateAuthority);
+            writeNoMacPkcs12(DIR_PKCS12_FILE, initialPkcs12.certificateAuthority);
+            awaitReloaded(() -> httpClientTrusts(url(initialPem)) && httpClientTrusts(url(initialPkcs12)));
+            assertFalse(httpClientTrusts(url(rotatedPem)), "fresh PEM peer must not be trusted before rotation");
+            assertFalse(httpClientTrusts(url(rotatedPkcs12)), "fresh PKCS12 peer must not be trusted before rotation");
+
+            writeCertificatesToPem(DIR_PEM_FILE, rotatedPem.certificateAuthority);
+            writeNoMacPkcs12(DIR_PKCS12_FILE, rotatedPkcs12.certificateAuthority);
+            awaitReloaded(() -> httpClientTrusts(url(rotatedPem)) && httpClientTrusts(url(rotatedPkcs12))
+                    && !httpClientTrusts(url(initialPem)) && !httpClientTrusts(url(initialPkcs12)));
+        }
+    }
+
+    @Test
+    void mixedPemAndPkcs12TruststorePathsPickUpRotatedCaAfterReload() throws Exception {
+        // truststore-paths lists a PEM file and a PKCS12 file side by side: a reload must pick up rotations in
+        // both entries while dropping the previous certificates.
+        try (TlsPeer initialPem = startPeerWithFreshCa(); TlsPeer initialPkcs12 = startPeerWithFreshCa();
+                TlsPeer rotatedPem = startPeerWithFreshCa(); TlsPeer rotatedPkcs12 = startPeerWithFreshCa()) {
+            writeCertificatesToPem(MIXED_PEM_FILE, initialPem.certificateAuthority);
+            writeNoMacPkcs12(MIXED_PKCS12_FILE, initialPkcs12.certificateAuthority);
+            awaitReloaded(() -> httpClientTrusts(url(initialPem)) && httpClientTrusts(url(initialPkcs12)));
+            assertFalse(httpClientTrusts(url(rotatedPem)), "fresh PEM peer must not be trusted before rotation");
+            assertFalse(httpClientTrusts(url(rotatedPkcs12)), "fresh PKCS12 peer must not be trusted before rotation");
+
+            writeCertificatesToPem(MIXED_PEM_FILE, rotatedPem.certificateAuthority);
+            writeNoMacPkcs12(MIXED_PKCS12_FILE, rotatedPkcs12.certificateAuthority);
+            awaitReloaded(() -> httpClientTrusts(url(rotatedPem)) && httpClientTrusts(url(rotatedPkcs12))
+                    && !httpClientTrusts(url(initialPem)) && !httpClientTrusts(url(initialPkcs12)));
+        }
+    }
+
     private boolean httpClientTrusts(String url) {
         return runOnServer.fetch(session -> {
             try {
@@ -137,6 +248,21 @@ public class TruststoreReloadTest {
                 return Boolean.FALSE;
             }
         }, Boolean.class);
+    }
+
+    private void startInFlightHttpRequest(String url) {
+        runOnServer.fetch(session -> {
+            InFlightHttpRequest.start(session.getProvider(HttpClientProvider.class), url);
+            return Boolean.TRUE;
+        }, Boolean.class);
+    }
+
+    private boolean inFlightHttpRequestFinished() {
+        return runOnServer.fetch(session -> InFlightHttpRequest.isFinished(), Boolean.class);
+    }
+
+    private boolean inFlightHttpRequestSucceeded() {
+        return runOnServer.fetch(session -> InFlightHttpRequest.awaitSuccess(), Boolean.class);
     }
 
     private boolean ldapsSocketFactoryTrusts(int port) {
@@ -206,6 +332,35 @@ public class TruststoreReloadTest {
         Files.writeString(TRUSTSTORE_FILE, certificatePem(certificateAuthority));
     }
 
+    private static void writeCertificatesToPem(Path file, X509Certificate... certificates) throws IOException {
+        StringBuilder pem = new StringBuilder();
+        for (X509Certificate certificate : certificates) {
+            pem.append(certificatePem(certificate));
+        }
+        Files.writeString(file, pem.toString());
+    }
+
+    // No-MAC PKCS12: KeyStore.getInstance("PKCS12"); load(null, null); setCertificateEntry; store(fos, null).
+    private static void writeNoMacPkcs12(Path file, X509Certificate... certificates) throws Exception {
+        writePkcs12(file, null, certificates);
+    }
+
+    // Empty-password-MAC PKCS12: identical, but stored with "".toCharArray() so the store carries an empty MAC.
+    private static void writeEmptyPasswordMacPkcs12(Path file, X509Certificate... certificates) throws Exception {
+        writePkcs12(file, "".toCharArray(), certificates);
+    }
+
+    private static void writePkcs12(Path file, char[] storePassword, X509Certificate... certificates) throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
+        keyStore.load(null, null);
+        for (X509Certificate certificate : certificates) {
+            keyStore.setCertificateEntry(certificate.getSubjectX500Principal().getName(), certificate);
+        }
+        try (var out = Files.newOutputStream(file)) {
+            keyStore.store(out, storePassword);
+        }
+    }
+
     private static String url(TlsPeer peer) {
         return "https://localhost:" + peer.port() + "/";
     }
@@ -215,6 +370,17 @@ public class TruststoreReloadTest {
                 .setValue(Buffer.buffer(STARTUP_TRUSTED_KEYSTORE))
                 .setPassword(STARTUP_TRUSTED_KEYSTORE_PASSWORD));
         return new TlsPeer(server, null);
+    }
+
+    private TlsPeer startHeldTrustedPeer() throws Exception {
+        AtomicReference<HttpServerResponse> heldResponse = new AtomicReference<>();
+        HttpServer server = vertx
+                .createHttpServer(new HttpServerOptions().setSsl(true).setKeyCertOptions(new PfxOptions()
+                        .setValue(Buffer.buffer(STARTUP_TRUSTED_KEYSTORE))
+                        .setPassword(STARTUP_TRUSTED_KEYSTORE_PASSWORD)))
+                .requestHandler(request -> heldResponse.set(request.response())); // capture, answer only on release()
+        server.listen(0, "localhost").toCompletionStage().toCompletableFuture().get(30, TimeUnit.SECONDS);
+        return new TlsPeer(server, null, heldResponse);
     }
 
     private TlsPeer startPeerWithFreshCa() throws Exception {
@@ -274,18 +440,60 @@ public class TruststoreReloadTest {
         }
     }
 
+    // Runs an outbound request on the server and holds its Future across runOnServer calls so the test can
+    // start it, trigger a reload, then verify it still completed. Lives in the run-on-server package.
+    public static final class InFlightHttpRequest {
+
+        private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
+        private static volatile Future<String> future;
+
+        static void start(HttpClientProvider provider, String url) {
+            future = EXECUTOR.submit(() -> provider.getString(url));
+        }
+
+        static boolean isFinished() {
+            return future != null && future.isDone();
+        }
+
+        static boolean awaitSuccess() {
+            try {
+                return "ok".equals(future.get(15, TimeUnit.SECONDS));
+            } catch (Exception aborted) {
+                return Boolean.FALSE;
+            }
+        }
+    }
+
     private static final class TlsPeer implements AutoCloseable {
 
         private final HttpServer server;
         private final X509Certificate certificateAuthority;
+        private final AtomicReference<HttpServerResponse> heldResponse;
 
         private TlsPeer(HttpServer server, X509Certificate certificateAuthority) {
+            this(server, certificateAuthority, null);
+        }
+
+        private TlsPeer(HttpServer server, X509Certificate certificateAuthority,
+                AtomicReference<HttpServerResponse> heldResponse) {
             this.server = server;
             this.certificateAuthority = certificateAuthority;
+            this.heldResponse = heldResponse;
         }
 
         private int port() {
             return server.actualPort();
+        }
+
+        private boolean hasReceivedRequest() {
+            return heldResponse != null && heldResponse.get() != null;
+        }
+
+        private void release() {
+            HttpServerResponse response = heldResponse == null ? null : heldResponse.get();
+            if (response != null) {
+                response.end("ok");
+            }
         }
 
         @Override
@@ -297,10 +505,22 @@ public class TruststoreReloadTest {
     static class ServerConfig implements KeycloakServerConfig {
         @Override
         public KeycloakServerConfigBuilder configure(KeycloakServerConfigBuilder config) {
+            // truststore-paths is a list: a PEM file, a no-MAC PKCS12, an empty-password-MAC PKCS12, a
+            // directory holding PEM+PKCS12, and a mixed PEM+PKCS12 pair - all reloaded on the same period.
+            String paths = String.join(",",
+                    TRUSTSTORE_FILE.toString(),
+                    NO_MAC_PKCS12_FILE.toString(),
+                    EMPTY_MAC_PKCS12_FILE.toString(),
+                    TRUSTSTORE_DIR.toString(),
+                    MIXED_PEM_FILE.toString(),
+                    MIXED_PKCS12_FILE.toString());
             return config
-                    .option(TruststoreOptions.TRUSTSTORE_PATHS.getKey(), TRUSTSTORE_FILE.toString())
+                    .option(TruststoreOptions.TRUSTSTORE_PATHS.getKey(), paths)
                     .option(TruststoreOptions.TRUSTSTORE_PATHS_RELOAD_PERIOD.getKey(), "2s")
-                    .option(TruststoreOptions.HOSTNAME_VERIFICATION_POLICY.getKey(), "ANY");
+                    .option(TruststoreOptions.HOSTNAME_VERIFICATION_POLICY.getKey(), "ANY")
+                    // Keep the outbound socket read-timeout well above the reload window so a held in-flight
+                    // request does not time out on its own during the test.
+                    .option("spi-connections-http-client-default-socket-timeout-millis", "60000");
         }
     }
 }

@@ -75,7 +75,7 @@ public class NginxProxySslClientCertificateLookupFactory extends AbstractClientC
     }
 
     @Override
-    public void truststoreReloaded() {
+    public void truststoreReloaded(KeycloakSession session) {
         isTruststoreLoaded = false;
     }
 
@@ -102,10 +102,13 @@ public class NginxProxySslClientCertificateLookupFactory extends AbstractClientC
                 Set<X509Certificate> rootCertificates = provider.getRootCertificates().entrySet().stream().flatMap(t -> t.getValue().stream()).collect(Collectors.toSet());
                 Set<X509Certificate> intermediateCertficiates = provider.getIntermediateCertificates().entrySet().stream().flatMap(t -> t.getValue().stream()).collect(Collectors.toSet());
 
-                trustedRootCerts = ConcurrentHashMap.newKeySet(rootCertificates.size());
-                trustedRootCerts.addAll(rootCertificates);
-                intermediateCerts = ConcurrentHashMap.newKeySet(intermediateCertficiates.size());
-                intermediateCerts.addAll(intermediateCertficiates);
+                Set<X509Certificate> newTrustedRootCerts = ConcurrentHashMap.newKeySet(rootCertificates.size());
+                newTrustedRootCerts.addAll(rootCertificates);
+                Set<X509Certificate> newIntermediateCerts = ConcurrentHashMap.newKeySet(intermediateCertficiates.size());
+                newIntermediateCerts.addAll(intermediateCertficiates);
+
+                trustedRootCerts = newTrustedRootCerts;
+                intermediateCerts = newIntermediateCerts;
                 logger.debug("Keycloak truststore loaded for NGINX x509cert-lookup provider.");
 
                 isTruststoreLoaded = true;

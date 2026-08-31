@@ -74,7 +74,7 @@ public class FileTruststoreProviderFactory implements TruststoreProviderFactory,
     }
 
     @Override
-    public void truststoreReloaded() {
+    public void truststoreReloaded(KeycloakSession session) {
         init(config);
     }
 

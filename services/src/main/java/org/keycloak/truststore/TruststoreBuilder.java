@@ -20,15 +20,24 @@ package org.keycloak.truststore;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.stream.Stream;
 
 import org.keycloak.common.crypto.CryptoIntegration;
@@ -48,6 +57,7 @@ public class TruststoreBuilder {
     public static final String SYSTEM_TRUSTSTORE_TYPE_KEY = "javax.net.ssl.trustStoreType";
     private static final String CERT_PROTECTION_ALGORITHM_KEY = "keystore.pkcs12.certProtectionAlgorithm";
     public static final String DUMMY_PASSWORD = "keycloakchangeit"; // fips length compliant dummy password
+    static final String DEFAULT_CACERTS_PASSWORD = "changeit"; // standard JVM cacerts password; non-approved BCFIPS rejects a null PKCS12 password
     static final String PKCS12 = "PKCS12";
 
     private static final String KUBERNETES_CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt";
@@ -60,16 +70,72 @@ public class TruststoreBuilder {
     private record SystemTruststoreSource(String[] paths, boolean includeDefault, String dataDir, TruststoreFormat preferredType) {
     }
 
+    private static volatile KeyStore systemTruststore;
+
+    private static volatile String lastSourceFingerprint;
+
     public static void setSystemTruststore(String[] truststores,
                                            boolean trustStoreIncludeDefault,
                                            String dataDir) {
         setSystemTruststore(truststores, trustStoreIncludeDefault, dataDir, null);
     }
 
-    static void reloadSystemTruststore() {
+    static boolean reloadSystemTruststoreIfChanged() {
         SystemTruststoreSource source = systemTruststoreSource;
-        if (source != null) {
-            setSystemTruststore(source.paths(), source.includeDefault(), source.dataDir(), source.preferredType());
+        if (source == null) {
+            return false;
+        }
+        if (computeSourceFingerprint(source).equals(lastSourceFingerprint)) {
+            return false;
+        }
+        setSystemTruststore(source.paths(), source.includeDefault(), source.dataDir(), source.preferredType());
+        return true;
+    }
+
+    // Fingerprint the reload SOURCES (truststore-paths files, files inside directory sources, and the default
+    // cacerts) by content, so an unchanged reload interval can be skipped. Never fingerprint the generated
+    // output store: re-saving a PKCS12 produces new bytes each time and would self-trigger.
+    private static String computeSourceFingerprint(SystemTruststoreSource source) {
+        SortedMap<String, String> entries = new TreeMap<>();
+        for (String path : source.paths()) {
+            addFingerprintEntries(new File(path), entries);
+        }
+        if (source.includeDefault()) {
+            String defaultTrustStore = System.getProperty(SYSTEM_TRUSTSTORE_KEY + ".orig");
+            if (defaultTrustStore != null) {
+                addFingerprintEntries(new File(defaultTrustStore), entries);
+            }
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            for (Map.Entry<String, String> entry : entries.entrySet()) {
+                digest.update(entry.getKey().getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+                digest.update(entry.getValue().getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void addFingerprintEntries(File file, SortedMap<String, String> entries) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    addFingerprintEntries(child, entries);
+                }
+            }
+        } else if (file.isFile()) {
+            try {
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                digest.update(Files.readAllBytes(file.toPath()));
+                entries.put(file.getAbsolutePath(), HexFormat.of().formatHex(digest.digest()));
+            } catch (IOException | NoSuchAlgorithmException e) {
+                // unreadable or vanished mid-scan: omit it, so its absence is reflected in the fingerprint
+            }
         }
     }
 
@@ -90,6 +156,13 @@ public class TruststoreBuilder {
         System.setProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_KEY, file.getAbsolutePath());
         System.setProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_TYPE_KEY, truststoreType.name());
         System.setProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_PASSWORD_KEY, DUMMY_PASSWORD);
+
+        systemTruststore = truststore;
+        lastSourceFingerprint = computeSourceFingerprint(systemTruststoreSource);
+    }
+
+    public static KeyStore getSystemTruststore() {
+        return systemTruststore;
     }
 
     /**
@@ -178,7 +251,7 @@ public class TruststoreBuilder {
             } else {
                 var format = KeystoreUtil.getKeystoreFormat(file).orElse(null);
                 if (format == KeystoreFormat.PKCS12) {
-                    mergeTrustStore(truststore, file, loadStore(file, PKCS12, null));
+                    mergeTrustStore(truststore, file, loadPkcs12Truststore(file));
                     discoveredFiles.add(f.getAbsolutePath());
                 } else if (mergePemFile(truststore, file, topLevel)) {
                     discoveredFiles.add(f.getAbsolutePath());
@@ -231,9 +304,14 @@ public class TruststoreBuilder {
             trustStorePath = System.getProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_KEY);
             if (trustStorePath == null) {
                 defaultTrustStore = getJRETruststore();
+                // Read the default JVM cacerts with its standard password rather than null: non-approved
+                // BCFIPS (FIPS non-strict) throws "No password supplied for PKCS#12 KeyStore" on a null
+                // password (reproduced in CI, issue #51680). Matches FileTruststoreProviderFactory, which
+                // already defaults the cacerts password to "changeit".
+                password = DEFAULT_CACERTS_PASSWORD;
                 System.setProperty(originalTruststoreKey, defaultTrustStore.getAbsolutePath());
                 System.setProperty(originalTruststoreTypeKey, type);
-                System.getProperties().remove(originalTruststorePasswordKey);
+                System.setProperty(originalTruststorePasswordKey, password);
             } else {
                 type = System.getProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_TYPE_KEY, KeyStore.getDefaultType());
                 password = System.getProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_PASSWORD_KEY);
@@ -255,9 +333,49 @@ public class TruststoreBuilder {
 
         if (defaultTrustStore.exists()) {
             String path = defaultTrustStore.getAbsolutePath();
-            mergeTrustStore(truststore, path, loadStore(path, type, password));
+            mergeTrustStore(truststore, path, loadDefaultTruststore(path, type, password));
         } else {
             LOGGER.warnf("Default truststore was to be included, but could not be found at: %s", defaultTrustStore);
+        }
+    }
+
+    /**
+     * The default JVM cacerts is frequently JKS even when the default keystore type is PKCS12. SUN's PKCS12
+     * reads a JKS file transparently (JDK compatibility mode) but BCFIPS does not, so under FIPS non-strict a
+     * JKS cacerts otherwise fails as "stream does not represent a PKCS12 key store". Fall back to JKS (loaded
+     * via the SUN provider), mirroring FileTruststoreProviderFactory. Reproduced and verified in CI (#51680).
+     */
+    private static KeyStore loadDefaultTruststore(String path, String type, String password) {
+        try {
+            return loadStore(path, type, password);
+        } catch (RuntimeException primaryFailure) {
+            if (!"jks".equalsIgnoreCase(type)) {
+                try {
+                    return loadStore(path, "jks", password);
+                } catch (RuntimeException jksFailure) {
+                    primaryFailure.addSuppressed(jksFailure);
+                }
+            }
+            throw primaryFailure;
+        }
+    }
+
+    /**
+     * Non-approved BCFIPS (FIPS non-strict) rejects a null PKCS12 password with "No password supplied for
+     * PKCS#12 KeyStore". Try null first to preserve exact non-FIPS behavior, then retry with an empty string,
+     * which loads both no-MAC and empty-password PKCS12 stores under SUN and BCFIPS. Mirrors the
+     * {@link #loadDefaultTruststore} fallback structure (#51680).
+     */
+    private static KeyStore loadPkcs12Truststore(String path) {
+        try {
+            return loadStore(path, PKCS12, null);
+        } catch (RuntimeException primaryFailure) {
+            try {
+                return loadStore(path, PKCS12, "");
+            } catch (RuntimeException emptyPasswordFailure) {
+                primaryFailure.addSuppressed(emptyPasswordFailure);
+            }
+            throw primaryFailure;
         }
     }
 

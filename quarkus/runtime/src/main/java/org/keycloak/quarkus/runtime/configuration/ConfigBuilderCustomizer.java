@@ -16,8 +16,7 @@ public class ConfigBuilderCustomizer implements SmallRyeConfigBuilderCustomizer 
     }
 
     static SmallRyeConfigBuilder addInterceptors(SmallRyeConfigBuilder builder) {
-        return builder.withInterceptors(new PropertyMappingInterceptor(), new NestedPropertyMappingInterceptor(),
-                new SystemTruststoreConfigInterceptor());
+        return builder.withInterceptors(new PropertyMappingInterceptor(), new NestedPropertyMappingInterceptor());
     }
     
 }
