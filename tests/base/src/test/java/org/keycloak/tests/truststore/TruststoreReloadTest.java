@@ -28,7 +28,6 @@ import org.keycloak.testframework.remote.runonserver.InjectRunOnServer;
 import org.keycloak.testframework.remote.runonserver.RunOnServerClient;
 import org.keycloak.testframework.server.KeycloakServerConfig;
 import org.keycloak.testframework.server.KeycloakServerConfigBuilder;
-import org.keycloak.truststore.SystemTruststoreReload;
 import org.keycloak.truststore.TruststoreBuilder;
 
 import io.vertx.core.Vertx;
@@ -73,7 +72,7 @@ public class TruststoreReloadTest {
     void resetSystemTruststore() throws IOException {
         vertx = Vertx.vertx();
         Files.write(TRUSTSTORE_FILE, STARTUP_TRUSTED_CERTIFICATE);
-        triggerReload();
+        awaitReloaded(() -> generatedTruststoreFileContains(startupTrustedSubject()));
     }
 
     @AfterEach
@@ -88,8 +87,6 @@ public class TruststoreReloadTest {
             assertFalse(httpClientTrusts(url(rotated)), "fresh peer must not be trusted before reload");
 
             rotateSystemTruststoreTo(rotated.certificateAuthority);
-            triggerReload();
-
             awaitReloaded(() -> httpClientTrusts(url(rotated)) && !httpClientTrusts(url(trusted)));
         }
     }
@@ -101,8 +98,6 @@ public class TruststoreReloadTest {
             assertFalse(ldapsSocketFactoryTrusts(rotated.port()), "fresh peer must not be trusted before reload");
 
             rotateSystemTruststoreTo(rotated.certificateAuthority);
-            triggerReload();
-
             awaitReloaded(() -> ldapsSocketFactoryTrusts(rotated.port()) && !ldapsSocketFactoryTrusts(trusted.port()));
         }
     }
@@ -116,8 +111,6 @@ public class TruststoreReloadTest {
         assertFalse(nginxLookupTrusts(rotatedSubject), "fresh ca must not be trusted before reload");
 
         rotateSystemTruststoreTo(rotatedCa);
-        triggerReload();
-
         awaitReloaded(() -> nginxLookupTrusts(rotatedSubject) && !nginxLookupTrusts(startupTrustedSubject()));
     }
 
@@ -132,8 +125,6 @@ public class TruststoreReloadTest {
                 "fresh ca must not be in the generated truststore file before reload");
 
         rotateSystemTruststoreTo(rotatedCa);
-        triggerReload();
-
         awaitReloaded(() -> generatedTruststoreFileContains(rotatedSubject)
                 && !generatedTruststoreFileContains(startupTrustedSubject()));
     }
@@ -205,10 +196,6 @@ public class TruststoreReloadTest {
                 return Boolean.FALSE;
             }
         }, Boolean.class);
-    }
-
-    private void triggerReload() {
-        runOnServer.run(session -> SystemTruststoreReload.reload(session));
     }
 
     private void awaitReloaded(Callable<Boolean> reloaded) {
@@ -312,6 +299,7 @@ public class TruststoreReloadTest {
         public KeycloakServerConfigBuilder configure(KeycloakServerConfigBuilder config) {
             return config
                     .option(TruststoreOptions.TRUSTSTORE_PATHS.getKey(), TRUSTSTORE_FILE.toString())
+                    .option(TruststoreOptions.TRUSTSTORE_PATHS_RELOAD_PERIOD.getKey(), "2s")
                     .option(TruststoreOptions.HOSTNAME_VERIFICATION_POLICY.getKey(), "ANY");
         }
     }

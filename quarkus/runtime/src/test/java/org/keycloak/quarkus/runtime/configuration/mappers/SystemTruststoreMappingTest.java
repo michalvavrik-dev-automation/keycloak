@@ -160,6 +160,17 @@ public class SystemTruststoreMappingTest extends AbstractConfigurationTest {
         ));
     }
 
+    @Test(timeout = 30000)
+    public void directoryWithSymlinkCycleIsScannedWithoutLooping() throws Exception {
+        File directory = temporaryFolder.newFolder("certs");
+        File pem = writePemCertificate(new File(directory, "ca.pem"));
+        Files.createSymbolicLink(new File(directory, "loop").toPath(), directory.toPath());
+
+        createConfigFromCliArguments("--truststore-paths=" + directory.getAbsolutePath());
+
+        assertExternalConfig(pemCerts(), pem.getAbsolutePath());
+    }
+
     @Test
     public void directoryIgnoresNonCertificateFiles() throws Exception {
         File directory = temporaryFolder.newFolder("certs");

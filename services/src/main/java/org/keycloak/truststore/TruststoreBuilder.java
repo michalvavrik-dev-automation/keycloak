@@ -55,16 +55,29 @@ public class TruststoreBuilder {
 
     private static final Logger LOGGER = Logger.getLogger(TruststoreBuilder.class);
 
+    private static volatile SystemTruststoreSource systemTruststoreSource;
+
+    private record SystemTruststoreSource(String[] paths, boolean includeDefault, String dataDir, TruststoreFormat preferredType) {
+    }
+
     public static void setSystemTruststore(String[] truststores,
                                            boolean trustStoreIncludeDefault,
                                            String dataDir) {
         setSystemTruststore(truststores, trustStoreIncludeDefault, dataDir, null);
     }
 
+    static void reloadSystemTruststore() {
+        SystemTruststoreSource source = systemTruststoreSource;
+        if (source != null) {
+            setSystemTruststore(source.paths(), source.includeDefault(), source.dataDir(), source.preferredType());
+        }
+    }
+
     public static void setSystemTruststore(String[] truststores,
                                            boolean trustStoreIncludeDefault,
                                            String dataDir,
                                            TruststoreFormat preferredTruststoreType) {
+        systemTruststoreSource = new SystemTruststoreSource(truststores.clone(), trustStoreIncludeDefault, dataDir, preferredTruststoreType);
         TruststoreFormat truststoreType = preferredTruststoreType == null
                 ? getPreferredGeneratedTrustStoreType()
                 : preferredTruststoreType;
@@ -115,10 +128,9 @@ public class TruststoreBuilder {
     static File saveTruststore(KeyStore truststore, TruststoreFormat truststoreType, String dataDir, char[] password) {
         File file = new File(dataDir, "keycloak-truststore." + truststoreType.getPrimaryExtension());
         file.getParentFile().mkdirs();
+        boolean initialCreation = !file.exists();
         try (FileOutputStream fos = new FileOutputStream(file)) {
-            if (truststoreType == TruststoreFormat.PKCS12) {
-                // this should inhibit the use of encryption in storing the certs
-                // it's of course not concurrency safe, but it should only be run at startup
+            if (truststoreType == TruststoreFormat.PKCS12 && initialCreation) {
                 String oldValue = System.setProperty(CERT_PROTECTION_ALGORITHM_KEY, "NONE");
                 try {
                     truststore.store(fos, password);
@@ -219,6 +231,9 @@ public class TruststoreBuilder {
             trustStorePath = System.getProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_KEY);
             if (trustStorePath == null) {
                 defaultTrustStore = getJRETruststore();
+                System.setProperty(originalTruststoreKey, defaultTrustStore.getAbsolutePath());
+                System.setProperty(originalTruststoreTypeKey, type);
+                System.getProperties().remove(originalTruststorePasswordKey);
             } else {
                 type = System.getProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_TYPE_KEY, KeyStore.getDefaultType());
                 password = System.getProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_PASSWORD_KEY);

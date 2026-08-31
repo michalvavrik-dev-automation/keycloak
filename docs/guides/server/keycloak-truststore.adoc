@@ -4,7 +4,7 @@
 <@tmpl.guide
 title="Configuring trusted certificates"
 summary="Configure the {project_name} Truststore to communicate through TLS."
-includedOptions="truststore-paths truststore-kubernetes-enabled tls-hostname-verifier">
+includedOptions="truststore-paths truststore-paths-reload-period truststore-kubernetes-enabled tls-hostname-verifier">
 
 When {project_name} communicates with external services or has an incoming connection through TLS, it has to validate the remote certificate in order to ensure it is connecting to a trusted server. This is necessary in order to prevent man-in-the-middle attacks.
 
@@ -25,6 +25,20 @@ For example:
 <@kc.start parameters="--truststore-paths=/opt/truststore/myTrustStore.pfx,/opt/other-truststore/myOtherTrustStore.pem" />
 
 It is still possible to directly set your own `javax.net.ssl` truststore System properties, but it's recommended to use the `--truststore-paths` instead.
+
+== Reloading the system truststore
+
+By default, the system truststore is built once at startup and stays fixed for the lifetime of the server. If your trusted certificates are rotated while {project_name} is running - for example, when a certificate authority is renewed - you would normally need to restart the server to pick up the changes.
+
+To avoid a restart, use the `--truststore-paths-reload-period` option to have {project_name} reload the system truststore periodically. This behavior is opt-in and is disabled unless the option is set. The value is a duration.
+
+When enabled, {project_name} re-reads the PEM and PKCS12 files referenced by the `--truststore-paths` option, together with the automatically discovered CA certificates (such as the Kubernetes and OpenShift cluster CAs), rebuilds the system truststore, and applies the updated material to outgoing TLS connections - including the HTTP client, LDAP and LDAPS connections, email (SMTP), and the reverse-proxy client certificate lookup - without requiring a restart.
+
+On each reload, the referenced files are re-read and any referenced directories are re-scanned, so certificate changes - including files added to or removed from a scanned directory - are picked up. The list of `--truststore-paths` entries is fixed at startup; changing that list requires a restart. The truststore is reloaded on every interval, so set the period to the longest interval that still meets your certificate-rotation needs.
+
+For example, to reload the system truststore every hour:
+
+<@kc.start parameters="--truststore-paths=/opt/truststore/myTrustStore.pem --truststore-paths-reload-period=1h" />
 
 == Cluster CA certificates (Kubernetes and OpenShift)
 

@@ -31,6 +31,7 @@ import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.provider.ProviderConfigurationBuilder;
 import org.keycloak.truststore.TruststoreProvider;
+import org.keycloak.truststore.TruststoreReloadListener;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
@@ -57,7 +58,7 @@ import static org.keycloak.utils.StringUtil.isBlank;
  * }
  * @author <a href="mailto:sthorger@redhat.com">Stian Thorgersen</a>
  */
-public class DefaultHttpClientFactory implements HttpClientFactory {
+public class DefaultHttpClientFactory implements HttpClientFactory, TruststoreReloadListener {
 
     private static final Logger logger = Logger.getLogger(DefaultHttpClientFactory.class);
     private static final String configScope = "keycloak.connectionsHttpClient.default.";
@@ -158,6 +159,12 @@ public class DefaultHttpClientFactory implements HttpClientFactory {
         } catch (IOException ignored) {
 
         }
+    }
+
+    @Override
+    public synchronized void truststoreReloaded() {
+        close();
+        httpClient = null;
     }
 
     @Override

@@ -28,7 +28,7 @@ public class TruststoreOptions {
 
     public static final Option<String> TRUSTSTORE_PATHS_RELOAD_PERIOD = new OptionBuilder<>("truststore-paths-reload-period", String.class)
             .category(OptionCategory.TRUSTSTORE)
-            .description("Interval on which to reload the system truststore material referenced by the truststore-paths option and the automatically discovered CA certificates. " + DURATION_DESCRIPTION + " Must be greater than 30 seconds. If not set, the system truststore is not reloaded automatically.")
+            .description("Interval on which to reload the system truststore material referenced by the truststore-paths option and the automatically discovered CA certificates. " + DURATION_DESCRIPTION + " If not set, the system truststore is not reloaded automatically.")
             .build();
 
 }

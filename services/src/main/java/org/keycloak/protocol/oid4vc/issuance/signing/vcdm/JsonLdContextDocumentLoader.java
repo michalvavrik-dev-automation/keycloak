@@ -120,6 +120,12 @@ public class JsonLdContextDocumentLoader implements DocumentLoader {
         return loader;
     }
 
+    public static void reset() {
+        synchronized (JsonLdContextDocumentLoader.class) {
+            sharedLoader = null;
+        }
+    }
+
     @Override
     public Document loadDocument(URI url, DocumentLoaderOptions options) throws JsonLdError {
         validate(url);

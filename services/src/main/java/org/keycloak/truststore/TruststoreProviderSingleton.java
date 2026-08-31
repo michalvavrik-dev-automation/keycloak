@@ -22,7 +22,7 @@ package org.keycloak.truststore;
  */
 class TruststoreProviderSingleton {
 
-    static private TruststoreProvider provider;
+    private static volatile TruststoreProvider provider;
 
     static void set(TruststoreProvider tp) {
         provider = tp;
