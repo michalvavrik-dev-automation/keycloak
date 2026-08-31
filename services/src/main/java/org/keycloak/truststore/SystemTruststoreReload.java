@@ -9,9 +9,13 @@ import org.keycloak.services.x509.X509ClientCertificateLookup;
 
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.jboss.logging.Logger;
+
 public final class SystemTruststoreReload {
 
     public static final String TLS_BUCKET_PREFIX = "keycloak-system-truststore";
+
+    private static final Logger LOGGER = Logger.getLogger(SystemTruststoreReload.class);
 
     private static final Object LOCK = new Object();
 
@@ -28,9 +32,13 @@ public final class SystemTruststoreReload {
     public static void reload(KeycloakSession session) {
         synchronized (LOCK) {
             if (!TruststoreBuilder.reloadSystemTruststoreIfChanged()) {
+                // Diagnostic (#51680): reached on every no-op tick once change-detection lands; kept at debug
+                // so it does not flood the log every reload-period.
+                LOGGER.debug("[truststore-reload] reload skipped: source fingerprint unchanged");
                 return;
             }
-            RELOAD_COUNT.incrementAndGet();
+            long count = RELOAD_COUNT.incrementAndGet();
+            LOGGER.infof("[truststore-reload] system truststore re-merged (reloadCount=%d); notifying consumers", count);
             KeycloakSessionFactory sessionFactory = session.getKeycloakSessionFactory();
             notifyListeners(session, sessionFactory, TruststoreProvider.class);
             SSLSocketFactory.reset();

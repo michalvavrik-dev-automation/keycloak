@@ -69,20 +69,32 @@ public class TruststoreReloadTest {
     private static final AtomicInteger CA_SEQUENCE = new AtomicInteger();
 
     static {
-        try {
-            Files.write(TRUSTSTORE_FILE, STARTUP_TRUSTED_CERTIFICATE);
-            // Every truststore-paths source must exist and be loadable when the server boots; seed the
-            // additional PKCS12/PEM/directory sources empty so the reload tests can populate them later.
-            Files.createDirectories(TRUSTSTORE_DIR);
-            writeCertificatesToPem(DIR_PEM_FILE);
-            writeCertificatesToPem(MIXED_PEM_FILE);
-            writeNoMacPkcs12(NO_MAC_PKCS12_FILE);
-            writeNoMacPkcs12(DIR_PKCS12_FILE);
-            writeNoMacPkcs12(MIXED_PKCS12_FILE);
-            writeEmptyPasswordMacPkcs12(EMPTY_MAC_PKCS12_FILE);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+        // These truststore-paths source files must exist before the server boots, so the controlling test JVM
+        // seeds them here in <clinit>. When runOnServer ships this class to the server it is reloaded by the
+        // remote TestClassLoader and this initializer runs a second time there; that server-side run must NOT
+        // recreate the shared files (it would clobber a rotation a running test performed). Guard on the loader.
+        if (runningInControllingTestJvm()) {
+            try {
+                Files.write(TRUSTSTORE_FILE, STARTUP_TRUSTED_CERTIFICATE);
+                // Every truststore-paths source must exist and be loadable when the server boots; seed the
+                // additional PKCS12/PEM/directory sources empty so the reload tests can populate them later.
+                Files.createDirectories(TRUSTSTORE_DIR);
+                writeCertificatesToPem(DIR_PEM_FILE);
+                writeCertificatesToPem(MIXED_PEM_FILE);
+                writeNoMacPkcs12(NO_MAC_PKCS12_FILE);
+                writeNoMacPkcs12(DIR_PKCS12_FILE);
+                writeNoMacPkcs12(MIXED_PKCS12_FILE);
+                writeEmptyPasswordMacPkcs12(EMPTY_MAC_PKCS12_FILE);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
         }
+    }
+
+    // True only in the controlling test JVM. Server-side (runOnServer) this class is loaded by the test
+    // framework's remote TestClassLoader; there the shared source files must never be (re)written.
+    private static boolean runningInControllingTestJvm() {
+        return !"TestClassLoader".equals(TruststoreReloadTest.class.getClassLoader().getClass().getSimpleName());
     }
 
     @InjectRunOnServer(permittedPackages = "org.keycloak.tests.truststore")
@@ -434,7 +446,11 @@ public class TruststoreReloadTest {
 
     private static byte[] readResource(String resource) {
         try (InputStream stream = TruststoreReloadTest.class.getClassLoader().getResourceAsStream(resource)) {
-            return stream.readAllBytes();
+            // Server-side (runOnServer) this class is reloaded by the remote TestClassLoader, which only serves
+            // .class/.json from permitted packages, so ssl/*.pem|p12 resources are absent there. Return null
+            // rather than throwing an NPE in <clinit>: this material is only used in the controlling test JVM,
+            // which has these resources on its classpath (the server-side seed writes are skipped anyway).
+            return stream == null ? null : stream.readAllBytes();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

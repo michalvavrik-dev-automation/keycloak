@@ -97,19 +97,34 @@ public class SystemTruststoreChangeDetectionTest {
     private static final AtomicInteger CA_SEQUENCE = new AtomicInteger();
 
     static {
-        try {
-            // Every truststore-paths source must exist and be loadable when the server boots; seed them empty
-            // and let each test populate its own fresh baseline in @BeforeEach.
-            Files.createDirectories(CHANGEDET_DIR);
-            writeFileAtomically(CHANGEDET_PEM, new byte[0]);
-            writeFileAtomically(CHANGEDET_MIXED_PEM, new byte[0]);
-            writeFileAtomically(CHANGEDET_DIR_BASELINE, new byte[0]);
-            writeFileAtomically(CHANGEDET_NOMAC_P12, pkcs12Bytes(null));
-            writeFileAtomically(CHANGEDET_MIXED_P12, pkcs12Bytes(null));
-            writeFileAtomically(CHANGEDET_EMPTYMAC_P12, pkcs12Bytes("".toCharArray()));
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+        // These truststore-paths source files must exist before the server boots, so the controlling test JVM
+        // seeds them here in <clinit>. When runOnServer ships this class to the server it is reloaded by the
+        // remote TestClassLoader and this initializer runs a second time there; that server-side run must NOT
+        // recreate the sources - doing so overwrites the fresh baselines the running test just wrote (embedded
+        // server = same JVM = same java.io.tmpdir = same files), leaving the reload nothing to pick up and
+        // making the @BeforeEach settle-wait time out. Guard on the class loader.
+        if (runningInControllingTestJvm()) {
+            try {
+                // Every truststore-paths source must exist and be loadable when the server boots; seed them empty
+                // and let each test populate its own fresh baseline in @BeforeEach.
+                Files.createDirectories(CHANGEDET_DIR);
+                writeFileAtomically(CHANGEDET_PEM, new byte[0]);
+                writeFileAtomically(CHANGEDET_MIXED_PEM, new byte[0]);
+                writeFileAtomically(CHANGEDET_DIR_BASELINE, new byte[0]);
+                writeFileAtomically(CHANGEDET_NOMAC_P12, pkcs12Bytes(null));
+                writeFileAtomically(CHANGEDET_MIXED_P12, pkcs12Bytes(null));
+                writeFileAtomically(CHANGEDET_EMPTYMAC_P12, pkcs12Bytes("".toCharArray()));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
         }
+    }
+
+    // True only in the controlling test JVM. Server-side (runOnServer) this class is loaded by the test
+    // framework's remote TestClassLoader; there the shared source files must never be (re)written.
+    private static boolean runningInControllingTestJvm() {
+        return !"TestClassLoader".equals(
+                SystemTruststoreChangeDetectionTest.class.getClassLoader().getClass().getSimpleName());
     }
 
     @InjectRunOnServer(permittedPackages = "org.keycloak.tests.truststore")

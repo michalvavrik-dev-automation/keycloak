@@ -83,13 +83,30 @@ public class TruststoreBuilder {
     static boolean reloadSystemTruststoreIfChanged() {
         SystemTruststoreSource source = systemTruststoreSource;
         if (source == null) {
+            // Diagnostic (#51680): no source was ever captured, so configureTruststore never ran (or ran with
+            // no truststore-paths). The reload path can never do anything in this state.
+            LOGGER.info("[truststore-reload] reloadSystemTruststoreIfChanged: no captured source; nothing to reload");
             return false;
         }
-        if (computeSourceFingerprint(source).equals(lastSourceFingerprint)) {
+        String current = computeSourceFingerprint(source);
+        if (current.equals(lastSourceFingerprint)) {
+            // Diagnostic (#51680) at INFO so the next CI run can distinguish "reload fired but fingerprint
+            // (wrongly) unchanged" from "reload never fired at all". Dial back to debug after root-causing.
+            LOGGER.infof("[truststore-reload] source fingerprint unchanged (%s); skipping re-merge",
+                    fingerprintPrefix(current));
             return false;
         }
+        LOGGER.infof("[truststore-reload] source fingerprint changed (%s -> %s); re-merging system truststore",
+                fingerprintPrefix(lastSourceFingerprint), fingerprintPrefix(current));
         setSystemTruststore(source.paths(), source.includeDefault(), source.dataDir(), source.preferredType());
         return true;
+    }
+
+    private static String fingerprintPrefix(String fingerprint) {
+        if (fingerprint == null) {
+            return "none";
+        }
+        return fingerprint.length() <= 12 ? fingerprint : fingerprint.substring(0, 12);
     }
 
     // Fingerprint the reload SOURCES (truststore-paths files, files inside directory sources, and the default
