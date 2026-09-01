@@ -26,9 +26,7 @@ In this release, Client Secret Rotation is promoted from preview to supported. F
 == Reloadable system truststore
 // https://github.com/keycloak/keycloak/issues/51680
 
-The system truststore can now be reloaded at runtime, so rotated CA certificates are picked up without restarting {project_name}. Set the new `--truststore-paths-reload-period` option to a duration and {project_name} periodically re-reads the certificates referenced by `--truststore-paths` and the automatically discovered CA certificates, and rebuilds the system truststore. Reloading is opt-in and disabled unless the option is set.
-
-Reloading is graceful: requests already in progress keep using the previous truststore, and only new requests use the reloaded one. Pooled LDAP and LDAPS connections are the exception - they keep the previous truststore until they are recycled. For details, see <@links.server id="keycloak-truststore"/>.
+The system truststore can now be reloaded at runtime, so rotated CA certificates are picked up without restarting {project_name}. Set the new `--truststore-paths-reload-period` option to a duration and {project_name} periodically re-reads the certificates referenced by `--truststore-paths` and the automatically discovered CA certificates, and rebuilds the system truststore. Reloading is opt-in and disabled unless the option is set. For details, see <@links.server id="keycloak-truststore"/>.
 
 == Automatic non-blocking index creation for large tables
 // https://github.com/keycloak/keycloak/issues/46555
