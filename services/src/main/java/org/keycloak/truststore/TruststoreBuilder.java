@@ -20,15 +20,24 @@ package org.keycloak.truststore;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.stream.Stream;
 
 import org.keycloak.common.crypto.CryptoIntegration;
@@ -48,6 +57,7 @@ public class TruststoreBuilder {
     public static final String SYSTEM_TRUSTSTORE_TYPE_KEY = "javax.net.ssl.trustStoreType";
     private static final String CERT_PROTECTION_ALGORITHM_KEY = "keystore.pkcs12.certProtectionAlgorithm";
     public static final String DUMMY_PASSWORD = "keycloakchangeit"; // fips length compliant dummy password
+    static final String DEFAULT_CACERTS_PASSWORD = "changeit"; // standard JVM cacerts password; non-approved BCFIPS rejects a null PKCS12 password
     static final String PKCS12 = "PKCS12";
 
     private static final String KUBERNETES_CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt";
@@ -55,28 +65,130 @@ public class TruststoreBuilder {
 
     private static final Logger LOGGER = Logger.getLogger(TruststoreBuilder.class);
 
+    private static volatile SystemTruststoreSource systemTruststoreSource;
+
+    private record SystemTruststoreSource(String[] paths, boolean includeDefault, String dataDir, TruststoreFormat preferredType) {
+    }
+
+    private static volatile KeyStore systemTruststore;
+
+    private static volatile String lastSourceFingerprint;
+
     public static void setSystemTruststore(String[] truststores,
                                            boolean trustStoreIncludeDefault,
                                            String dataDir) {
         setSystemTruststore(truststores, trustStoreIncludeDefault, dataDir, null);
     }
 
+    static boolean reloadSystemTruststoreIfChanged() {
+        SystemTruststoreSource source = systemTruststoreSource;
+        if (source == null) {
+            // No source captured yet (configureTruststore has not run, or ran without truststore-paths): there
+            // is nothing to reload.
+            LOGGER.debug("No system truststore source captured; nothing to reload");
+            return false;
+        }
+        String current = computeSourceFingerprint(source);
+        if (current.equals(lastSourceFingerprint)) {
+            LOGGER.debugf("System truststore sources unchanged (fingerprint %s); skipping re-merge",
+                    fingerprintPrefix(current));
+            return false;
+        }
+        LOGGER.debugf("System truststore sources changed (%s -> %s); re-merging",
+                fingerprintPrefix(lastSourceFingerprint), fingerprintPrefix(current));
+        // Reuse the fingerprint just computed to detect the change, so a reload does not fingerprint the sources
+        // a second time.
+        rebuildAndPublish(source, current);
+        return true;
+    }
+
+    private static String fingerprintPrefix(String fingerprint) {
+        if (fingerprint == null) {
+            return "none";
+        }
+        return fingerprint.length() <= 12 ? fingerprint : fingerprint.substring(0, 12);
+    }
+
+    // Fingerprint the reload SOURCES (truststore-paths files, files inside directory sources, and the default
+    // cacerts) by content, so an unchanged reload interval can be skipped. Never fingerprint the generated
+    // output store: re-saving a PKCS12 produces new bytes each time and would self-trigger.
+    private static String computeSourceFingerprint(SystemTruststoreSource source) {
+        SortedMap<String, String> entries = new TreeMap<>();
+        for (String path : source.paths()) {
+            addFingerprintEntries(new File(path), entries);
+        }
+        if (source.includeDefault()) {
+            String defaultTrustStore = System.getProperty(SYSTEM_TRUSTSTORE_KEY + ".orig");
+            if (defaultTrustStore != null) {
+                addFingerprintEntries(new File(defaultTrustStore), entries);
+            }
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            for (Map.Entry<String, String> entry : entries.entrySet()) {
+                digest.update(entry.getKey().getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+                digest.update(entry.getValue().getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void addFingerprintEntries(File file, SortedMap<String, String> entries) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    addFingerprintEntries(child, entries);
+                }
+            }
+        } else if (file.isFile()) {
+            try {
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                digest.update(Files.readAllBytes(file.toPath()));
+                entries.put(file.getAbsolutePath(), HexFormat.of().formatHex(digest.digest()));
+            } catch (IOException | NoSuchAlgorithmException e) {
+                // unreadable or vanished mid-scan: omit it, so its absence is reflected in the fingerprint
+            }
+        }
+    }
+
     public static void setSystemTruststore(String[] truststores,
                                            boolean trustStoreIncludeDefault,
                                            String dataDir,
                                            TruststoreFormat preferredTruststoreType) {
-        TruststoreFormat truststoreType = preferredTruststoreType == null
+        SystemTruststoreSource source = new SystemTruststoreSource(
+                truststores.clone(), trustStoreIncludeDefault, dataDir, preferredTruststoreType);
+        rebuildAndPublish(source, computeSourceFingerprint(source));
+    }
+
+    // Merge the captured sources, persist the generated store, publish it and record its fingerprint. The
+    // fingerprint is supplied by the caller so a reload does not fingerprint the sources twice (once to detect
+    // the change, once here).
+    private static void rebuildAndPublish(SystemTruststoreSource source, String sourceFingerprint) {
+        systemTruststoreSource = source;
+        TruststoreFormat truststoreType = source.preferredType() == null
                 ? getPreferredGeneratedTrustStoreType()
-                : preferredTruststoreType;
-        KeyStore truststore = createMergedTruststore(truststores, trustStoreIncludeDefault, truststoreType);
+                : source.preferredType();
+        KeyStore truststore = createMergedTruststore(source.paths(), source.includeDefault(), truststoreType);
 
         // save with a dummy password just in case some logic that uses the system properties needs to have one
-        File file = saveTruststore(truststore, truststoreType, dataDir, DUMMY_PASSWORD.toCharArray());
+        File file = saveTruststore(truststore, truststoreType, source.dataDir(), DUMMY_PASSWORD.toCharArray());
 
         // finally update the system properties
         System.setProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_KEY, file.getAbsolutePath());
         System.setProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_TYPE_KEY, truststoreType.name());
         System.setProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_PASSWORD_KEY, DUMMY_PASSWORD);
+
+        systemTruststore = truststore;
+        lastSourceFingerprint = sourceFingerprint;
+    }
+
+    public static KeyStore getSystemTruststore() {
+        return systemTruststore;
     }
 
     /**
@@ -115,10 +227,9 @@ public class TruststoreBuilder {
     static File saveTruststore(KeyStore truststore, TruststoreFormat truststoreType, String dataDir, char[] password) {
         File file = new File(dataDir, "keycloak-truststore." + truststoreType.getPrimaryExtension());
         file.getParentFile().mkdirs();
+        boolean initialCreation = !file.exists();
         try (FileOutputStream fos = new FileOutputStream(file)) {
-            if (truststoreType == TruststoreFormat.PKCS12) {
-                // this should inhibit the use of encryption in storing the certs
-                // it's of course not concurrency safe, but it should only be run at startup
+            if (truststoreType == TruststoreFormat.PKCS12 && initialCreation) {
                 String oldValue = System.setProperty(CERT_PROTECTION_ALGORITHM_KEY, "NONE");
                 try {
                     truststore.store(fos, password);
@@ -166,7 +277,7 @@ public class TruststoreBuilder {
             } else {
                 var format = KeystoreUtil.getKeystoreFormat(file).orElse(null);
                 if (format == KeystoreFormat.PKCS12) {
-                    mergeTrustStore(truststore, file, loadStore(file, PKCS12, null));
+                    mergeTrustStore(truststore, file, loadPkcs12Truststore(file));
                     discoveredFiles.add(f.getAbsolutePath());
                 } else if (mergePemFile(truststore, file, topLevel)) {
                     discoveredFiles.add(f.getAbsolutePath());
@@ -219,6 +330,14 @@ public class TruststoreBuilder {
             trustStorePath = System.getProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_KEY);
             if (trustStorePath == null) {
                 defaultTrustStore = getJRETruststore();
+                // Read the default JVM cacerts with its standard password rather than null: non-approved
+                // BCFIPS (FIPS non-strict) throws "No password supplied for PKCS#12 KeyStore" on a null
+                // password (reproduced in CI, issue #51680). Matches FileTruststoreProviderFactory, which
+                // already defaults the cacerts password to "changeit".
+                password = DEFAULT_CACERTS_PASSWORD;
+                System.setProperty(originalTruststoreKey, defaultTrustStore.getAbsolutePath());
+                System.setProperty(originalTruststoreTypeKey, type);
+                System.setProperty(originalTruststorePasswordKey, password);
             } else {
                 type = System.getProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_TYPE_KEY, KeyStore.getDefaultType());
                 password = System.getProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_PASSWORD_KEY);
@@ -240,9 +359,56 @@ public class TruststoreBuilder {
 
         if (defaultTrustStore.exists()) {
             String path = defaultTrustStore.getAbsolutePath();
-            mergeTrustStore(truststore, path, loadStore(path, type, password));
+            mergeTrustStore(truststore, path, loadDefaultTruststore(path, type, password));
         } else {
             LOGGER.warnf("Default truststore was to be included, but could not be found at: %s", defaultTrustStore);
+        }
+    }
+
+    /**
+     * The default JVM cacerts is frequently JKS even when the default keystore type is PKCS12. SUN's PKCS12
+     * reads a JKS file transparently (JDK compatibility mode) but BCFIPS does not, so under FIPS non-strict a
+     * JKS cacerts otherwise fails as "stream does not represent a PKCS12 key store". Fall back to JKS (loaded
+     * via the SUN provider), mirroring FileTruststoreProviderFactory. Reproduced and verified in CI (#51680).
+     */
+    private static KeyStore loadDefaultTruststore(String path, String type, String password) {
+        try {
+            return loadStore(path, type, password);
+        } catch (RuntimeException primaryFailure) {
+            if (!"jks".equalsIgnoreCase(type)) {
+                try {
+                    return loadStore(path, "jks", password);
+                } catch (RuntimeException jksFailure) {
+                    primaryFailure.addSuppressed(jksFailure);
+                }
+            }
+            throw primaryFailure;
+        }
+    }
+
+    /**
+     * Load a PKCS12 truststore-paths source with a genuine empty-string password rather than a null one.
+     * <p>
+     * A null password makes SUN's PKCS12 implementation skip MAC verification and then silently drop the
+     * (encrypted) certificate bags of an empty-password-MAC store - the entries vanish with NO exception, so
+     * an exception-gated fallback never runs and those certs are lost from the merge (#51680, reproduced by
+     * {@code SystemTruststoreChangeDetectionTest}/{@code TruststoreReloadTest} empty-MAC PKCS12 cases). An
+     * empty string reads no-MAC, empty-password-MAC and - under non-approved BCFIPS, which rejects a null
+     * PKCS12 password outright with "No password supplied for PKCS#12 KeyStore" - every supported PKCS12
+     * truststore-paths shape (it is a strict superset of the null-password loader across SUN/BC/BCFIPS). Fall
+     * back to a null password only if the empty string is rejected, preserving the previous behavior as a
+     * safety net. Mirrors the {@link #loadDefaultTruststore} fallback structure.
+     */
+    private static KeyStore loadPkcs12Truststore(String path) {
+        try {
+            return loadStore(path, PKCS12, "");
+        } catch (RuntimeException emptyPasswordFailure) {
+            try {
+                return loadStore(path, PKCS12, null);
+            } catch (RuntimeException nullPasswordFailure) {
+                emptyPasswordFailure.addSuppressed(nullPasswordFailure);
+            }
+            throw emptyPasswordFailure;
         }
     }
 
