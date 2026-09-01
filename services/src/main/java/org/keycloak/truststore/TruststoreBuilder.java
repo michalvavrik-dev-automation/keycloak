@@ -83,22 +83,22 @@ public class TruststoreBuilder {
     static boolean reloadSystemTruststoreIfChanged() {
         SystemTruststoreSource source = systemTruststoreSource;
         if (source == null) {
-            // Diagnostic (#51680): no source was ever captured, so configureTruststore never ran (or ran with
-            // no truststore-paths). The reload path can never do anything in this state.
-            LOGGER.info("[truststore-reload] reloadSystemTruststoreIfChanged: no captured source; nothing to reload");
+            // No source captured yet (configureTruststore has not run, or ran without truststore-paths): there
+            // is nothing to reload.
+            LOGGER.debug("No system truststore source captured; nothing to reload");
             return false;
         }
         String current = computeSourceFingerprint(source);
         if (current.equals(lastSourceFingerprint)) {
-            // Diagnostic (#51680) at INFO so the next CI run can distinguish "reload fired but fingerprint
-            // (wrongly) unchanged" from "reload never fired at all". Dial back to debug after root-causing.
-            LOGGER.infof("[truststore-reload] source fingerprint unchanged (%s); skipping re-merge",
+            LOGGER.debugf("System truststore sources unchanged (fingerprint %s); skipping re-merge",
                     fingerprintPrefix(current));
             return false;
         }
-        LOGGER.infof("[truststore-reload] source fingerprint changed (%s -> %s); re-merging system truststore",
+        LOGGER.debugf("System truststore sources changed (%s -> %s); re-merging",
                 fingerprintPrefix(lastSourceFingerprint), fingerprintPrefix(current));
-        setSystemTruststore(source.paths(), source.includeDefault(), source.dataDir(), source.preferredType());
+        // Reuse the fingerprint just computed to detect the change, so a reload does not fingerprint the sources
+        // a second time.
+        rebuildAndPublish(source, current);
         return true;
     }
 
@@ -160,14 +160,23 @@ public class TruststoreBuilder {
                                            boolean trustStoreIncludeDefault,
                                            String dataDir,
                                            TruststoreFormat preferredTruststoreType) {
-        systemTruststoreSource = new SystemTruststoreSource(truststores.clone(), trustStoreIncludeDefault, dataDir, preferredTruststoreType);
-        TruststoreFormat truststoreType = preferredTruststoreType == null
+        SystemTruststoreSource source = new SystemTruststoreSource(
+                truststores.clone(), trustStoreIncludeDefault, dataDir, preferredTruststoreType);
+        rebuildAndPublish(source, computeSourceFingerprint(source));
+    }
+
+    // Merge the captured sources, persist the generated store, publish it and record its fingerprint. The
+    // fingerprint is supplied by the caller so a reload does not fingerprint the sources twice (once to detect
+    // the change, once here).
+    private static void rebuildAndPublish(SystemTruststoreSource source, String sourceFingerprint) {
+        systemTruststoreSource = source;
+        TruststoreFormat truststoreType = source.preferredType() == null
                 ? getPreferredGeneratedTrustStoreType()
-                : preferredTruststoreType;
-        KeyStore truststore = createMergedTruststore(truststores, trustStoreIncludeDefault, truststoreType);
+                : source.preferredType();
+        KeyStore truststore = createMergedTruststore(source.paths(), source.includeDefault(), truststoreType);
 
         // save with a dummy password just in case some logic that uses the system properties needs to have one
-        File file = saveTruststore(truststore, truststoreType, dataDir, DUMMY_PASSWORD.toCharArray());
+        File file = saveTruststore(truststore, truststoreType, source.dataDir(), DUMMY_PASSWORD.toCharArray());
 
         // finally update the system properties
         System.setProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_KEY, file.getAbsolutePath());
@@ -175,7 +184,7 @@ public class TruststoreBuilder {
         System.setProperty(TruststoreBuilder.SYSTEM_TRUSTSTORE_PASSWORD_KEY, DUMMY_PASSWORD);
 
         systemTruststore = truststore;
-        lastSourceFingerprint = computeSourceFingerprint(systemTruststoreSource);
+        lastSourceFingerprint = sourceFingerprint;
     }
 
     public static KeyStore getSystemTruststore() {
@@ -378,21 +387,28 @@ public class TruststoreBuilder {
     }
 
     /**
-     * Non-approved BCFIPS (FIPS non-strict) rejects a null PKCS12 password with "No password supplied for
-     * PKCS#12 KeyStore". Try null first to preserve exact non-FIPS behavior, then retry with an empty string,
-     * which loads both no-MAC and empty-password PKCS12 stores under SUN and BCFIPS. Mirrors the
-     * {@link #loadDefaultTruststore} fallback structure (#51680).
+     * Load a PKCS12 truststore-paths source with a genuine empty-string password rather than a null one.
+     * <p>
+     * A null password makes SUN's PKCS12 implementation skip MAC verification and then silently drop the
+     * (encrypted) certificate bags of an empty-password-MAC store - the entries vanish with NO exception, so
+     * an exception-gated fallback never runs and those certs are lost from the merge (#51680, reproduced by
+     * {@code SystemTruststoreChangeDetectionTest}/{@code TruststoreReloadTest} empty-MAC PKCS12 cases). An
+     * empty string reads no-MAC, empty-password-MAC and - under non-approved BCFIPS, which rejects a null
+     * PKCS12 password outright with "No password supplied for PKCS#12 KeyStore" - every supported PKCS12
+     * truststore-paths shape (it is a strict superset of the null-password loader across SUN/BC/BCFIPS). Fall
+     * back to a null password only if the empty string is rejected, preserving the previous behavior as a
+     * safety net. Mirrors the {@link #loadDefaultTruststore} fallback structure.
      */
     private static KeyStore loadPkcs12Truststore(String path) {
         try {
-            return loadStore(path, PKCS12, null);
-        } catch (RuntimeException primaryFailure) {
+            return loadStore(path, PKCS12, "");
+        } catch (RuntimeException emptyPasswordFailure) {
             try {
-                return loadStore(path, PKCS12, "");
-            } catch (RuntimeException emptyPasswordFailure) {
-                primaryFailure.addSuppressed(emptyPasswordFailure);
+                return loadStore(path, PKCS12, null);
+            } catch (RuntimeException nullPasswordFailure) {
+                emptyPasswordFailure.addSuppressed(nullPasswordFailure);
             }
-            throw primaryFailure;
+            throw emptyPasswordFailure;
         }
     }
 

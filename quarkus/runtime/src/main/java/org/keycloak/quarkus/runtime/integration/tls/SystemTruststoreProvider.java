@@ -27,27 +27,25 @@ public class SystemTruststoreProvider implements TrustStoreProvider {
     public TrustStoreAndTrustOptions getTrustStore(Vertx vertx) {
         KeyStore ks = TruststoreBuilder.getSystemTruststore();
         if (ks == null) {
-            // Diagnostic (#51680): a null result here at bucket construction (RUNTIME_INIT) leaves the TLS
-            // holder with a null trustStore, so VertxCertificateHolder.reload() returns false forever and the
-            // reload-period timer never fires a CertificateUpdatedEvent - i.e. the whole reload chain is inert.
-            LOGGER.info("[truststore-reload] provider returning null: system truststore not built (inert bucket)");
+            // Default deployments never build a system truststore, so this bucket stays inert. Returning null
+            // leaves the TLS holder without a trust store, so VertxCertificateHolder.reload() keeps returning
+            // false and no reload timer runs for it.
+            LOGGER.debug("System truststore not built; serving an inert trust-store bucket");
             return null;
         }
-        LOGGER.debugf("[truststore-reload] provider returning system truststore (%d entries)", trustStoreSize(ks));
+        // The TLS registry re-invokes this provider once per reload period (it never diffs the material itself),
+        // so re-merge the sources here, before serving, and the bucket reflects a source change within the same
+        // period it happens instead of one period later. The check no-ops when nothing changed; the
+        // CertificateUpdatedEvent that follows drives the refresh of the non-registry consumers.
+        if (SystemTruststoreReload.reloadIfChanged()) {
+            ks = TruststoreBuilder.getSystemTruststore();
+        }
         try {
             TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
             tmf.init(ks);
             return new TrustStoreAndTrustOptions(ks, TrustOptions.wrap(tmf));
         } catch (GeneralSecurityException e) {
             throw new RuntimeException(e);
-        }
-    }
-
-    private static int trustStoreSize(KeyStore ks) {
-        try {
-            return ks.size();
-        } catch (Exception e) {
-            return -1;
         }
     }
 }

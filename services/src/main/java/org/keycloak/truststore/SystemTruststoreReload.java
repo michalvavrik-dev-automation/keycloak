@@ -21,6 +21,9 @@ public final class SystemTruststoreReload {
 
     private static final AtomicLong RELOAD_COUNT = new AtomicLong();
 
+    // Highest RELOAD_COUNT value that the legacy (non-registry) consumers have already been notified about.
+    private static final AtomicLong NOTIFIED_COUNT = new AtomicLong();
+
     private SystemTruststoreReload() {
     }
 
@@ -29,16 +32,53 @@ public final class SystemTruststoreReload {
         return RELOAD_COUNT.get();
     }
 
-    public static void reload(KeycloakSession session) {
+    /**
+     * Re-merge the system truststore if any source changed since the last merge, returning whether a re-merge
+     * happened. Invoked from {@code SystemTruststoreProvider.getTrustStore} so the provider-backed TLS-registry
+     * bucket serves the freshly merged store within the SAME reload tick (no one-period lag), and defensively
+     * from {@link #notifyConsumers}. Thread-safe; the underlying fingerprint check no-ops on unchanged sources,
+     * so this is cheap to call every reload period and only advances {@link #reloadCount()} on a real change.
+     */
+    public static boolean reloadIfChanged() {
         synchronized (LOCK) {
             if (!TruststoreBuilder.reloadSystemTruststoreIfChanged()) {
-                // Diagnostic (#51680): reached on every no-op tick once change-detection lands; kept at debug
-                // so it does not flood the log every reload-period.
-                LOGGER.debug("[truststore-reload] reload skipped: source fingerprint unchanged");
-                return;
+                LOGGER.debug("System truststore sources unchanged; nothing to reload");
+                return false;
             }
             long count = RELOAD_COUNT.incrementAndGet();
-            LOGGER.infof("[truststore-reload] system truststore re-merged (reloadCount=%d); notifying consumers", count);
+            LOGGER.infof("System truststore re-merged (reloadCount=%d)", count);
+            return true;
+        }
+    }
+
+    /**
+     * True if a re-merge has happened that the legacy consumers have not yet been refreshed for. Lets the reload
+     * observer skip opening a DB transaction on the (common) no-op reload periods (#51680).
+     */
+    public static boolean hasPendingConsumerNotification() {
+        return RELOAD_COUNT.get() != NOTIFIED_COUNT.get();
+    }
+
+    /**
+     * Refresh the legacy (non-registry) truststore consumers - the shared Apache HttpClient, the nginx mTLS
+     * lookup, the LDAP {@link SSLSocketFactory}, the JSON-LD document loader and the file
+     * {@link TruststoreProvider} - after a re-merge. The registry bucket refreshes itself via
+     * {@link #reloadIfChanged}. No-op when nothing changed since the last notification, so it is safe to invoke
+     * on every reload tick. Consumers are refreshed in dependency order: the {@link TruststoreProvider} first,
+     * then the components that read through it.
+     */
+    public static void notifyConsumers(KeycloakSession session) {
+        synchronized (LOCK) {
+            // Ensure the latest merge has landed even if getTrustStore has not run this tick (defensive; a
+            // no-op when the provider already re-merged, so it never double-counts a change).
+            reloadIfChanged();
+            long count = RELOAD_COUNT.get();
+            if (count == NOTIFIED_COUNT.get()) {
+                LOGGER.debugf("System truststore consumers already refreshed for reloadCount=%d; skipping", count);
+                return;
+            }
+            NOTIFIED_COUNT.set(count);
+            LOGGER.infof("Refreshing system truststore consumers after reload (reloadCount=%d)", count);
             KeycloakSessionFactory sessionFactory = session.getKeycloakSessionFactory();
             notifyListeners(session, sessionFactory, TruststoreProvider.class);
             SSLSocketFactory.reset();
