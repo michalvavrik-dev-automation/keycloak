@@ -4,6 +4,8 @@ import java.util.List;
 
 import org.keycloak.common.enums.HostnameVerificationPolicy;
 
+import static org.keycloak.config.OptionsUtil.DURATION_DESCRIPTION;
+
 public class TruststoreOptions {
 
     public static final Option<List<String>> TRUSTSTORE_PATHS = OptionBuilder.listOptionBuilder("truststore-paths", String.class)
@@ -22,6 +24,11 @@ public class TruststoreOptions {
             .description("The TLS hostname verification policy for out-going HTTPS and SMTP requests. ANY should not be used in production.")
             .defaultValue(HostnameVerificationPolicy.DEFAULT)
             .deprecatedValues("STRICT and WILDCARD have been deprecated, use DEFAULT instead.", HostnameVerificationPolicy.STRICT, HostnameVerificationPolicy.WILDCARD)
+            .build();
+
+    public static final Option<String> TRUSTSTORE_PATHS_RELOAD_PERIOD = new OptionBuilder<>("truststore-paths-reload-period", String.class)
+            .category(OptionCategory.TRUSTSTORE)
+            .description("Interval on which to reload the system truststore material referenced by the truststore-paths option and the automatically discovered CA certificates. " + DURATION_DESCRIPTION + " If not set, the system truststore is not reloaded automatically.")
             .build();
 
 }
