@@ -2,6 +2,8 @@ package org.keycloak.truststore;
 
 import java.util.concurrent.atomic.AtomicLong;
 
+import io.quarkus.arc.Arc;
+
 import org.keycloak.connections.httpclient.HttpClientProvider;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
@@ -40,6 +42,7 @@ public final class SystemTruststoreReload {
      * so this is cheap to call every reload period and only advances {@link #reloadCount()} on a real change.
      */
     public static boolean reloadIfChanged() {
+        SystemTruststoreReload instance = Arc.requireContainer().select(SystemTruststoreReload.class).get();
         synchronized (LOCK) {
             if (!TruststoreBuilder.reloadSystemTruststoreIfChanged()) {
                 LOGGER.debug("System truststore sources unchanged; nothing to reload");

@@ -16,7 +16,7 @@ public class SystemTruststoreReloadObserver {
 
     private static final Logger LOGGER = Logger.getLogger(SystemTruststoreReloadObserver.class);
 
-    void onSystemTruststoreUpdated(@Observes CertificateUpdatedEvent event) {
+    void onSystemTruststoreUpdated(@Observes CertificateUpdatedEvent event, DefaultKeycloakSessionFactory sessionFactory) {
         if (!event.name().startsWith(SystemTruststoreReload.TLS_BUCKET_PREFIX)) {
             return;
         }
@@ -25,7 +25,6 @@ public class SystemTruststoreReloadObserver {
             // so there is nothing new to propagate. Skip early to avoid opening a transaction on no-op periods.
             return;
         }
-        DefaultKeycloakSessionFactory sessionFactory = KeycloakApplication.getSessionFactory();
         if (sessionFactory != null) {
             KeycloakModelUtils.runJobInTransaction(sessionFactory, SystemTruststoreReload::notifyConsumers);
         } else {
