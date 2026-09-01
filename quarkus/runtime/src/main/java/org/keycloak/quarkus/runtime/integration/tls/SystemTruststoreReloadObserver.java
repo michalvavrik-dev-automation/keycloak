@@ -17,7 +17,7 @@ public class SystemTruststoreReloadObserver {
     private static final Logger LOGGER = Logger.getLogger(SystemTruststoreReloadObserver.class);
 
     void onSystemTruststoreUpdated(@Observes CertificateUpdatedEvent event) {
-        if (!event.name().startsWith(SystemTruststoreReload.TLS_BUCKET_PREFIX)) {
+        if (!SystemTruststoreReload.TLS_BUCKET_PREFIX.equalsIgnoreCase(event.name())) {
             return;
         }
         if (!SystemTruststoreReload.hasPendingConsumerNotification()) {
