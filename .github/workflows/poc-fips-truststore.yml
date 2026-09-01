@@ -1,0 +1,114 @@
+# POC workflow - runs ONLY on dev-auto/keycloak-51680/fips-ci. All other workflows removed on this branch
+# so the full Keycloak CI does not run. Proves the system-truststore reload fix (empty-password-MAC PKCS12
+# + same-tick bucket re-merge) across non-FIPS and FIPS strict/non-strict.
+name: poc-fips-truststore
+on:
+  push:
+    branches:
+      - dev-auto/keycloak-51680/fips-ci
+permissions:
+  contents: read
+concurrency:
+  group: poc-fips-truststore-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  reload-nonfips:
+    name: tests/base reload + change-detection (non-FIPS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      MAVEN_OPTS: -Xmx2560m
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build tests/base
+        run: ./mvnw -B -e -nsu -DskipTests -DskipExamples -DskipProtoLock=true -pl tests/base -am install
+      - name: Run reload + change-detection
+        run: |
+          set -o pipefail
+          ./mvnw -B -e -nsu test -pl tests/base -Dtest=TruststoreReloadTest,SystemTruststoreChangeDetectionTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee reload-nonfips.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reload-nonfips-logs
+          path: |
+            reload-nonfips.log
+            tests/base/target/surefire-reports/**
+  reload-fips-strict:
+    name: tests/base TruststoreReloadTest (FIPS strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      MAVEN_OPTS: -Xmx2560m
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build tests/base
+        run: ./mvnw -B -e -nsu -DskipTests -DskipExamples -DskipProtoLock=true -pl tests/base -am install
+      - name: Run FIPS strict suite
+        run: |
+          set -o pipefail
+          ./mvnw -B -e -nsu test -pl tests/base -Dtest=PocFipsStrictTruststoreSuite -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee reload-fips-strict.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reload-fips-strict-logs
+          path: |
+            reload-fips-strict.log
+            tests/base/target/surefire-reports/**
+  reload-fips-nonstrict:
+    name: tests/base TruststoreReloadTest (FIPS non-strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      MAVEN_OPTS: -Xmx2560m
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build tests/base
+        run: ./mvnw -B -e -nsu -DskipTests -DskipExamples -DskipProtoLock=true -pl tests/base -am install
+      - name: Run FIPS non-strict suite
+        run: |
+          set -o pipefail
+          ./mvnw -B -e -nsu test -pl tests/base -Dtest=PocFipsNonStrictTruststoreSuite -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee reload-fips-nonstrict.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reload-fips-nonstrict-logs
+          path: |
+            reload-fips-nonstrict.log
+            tests/base/target/surefire-reports/**
+  dist-fips-truststore:
+    name: dist FIPS truststore-paths (FipsTruststoreDistTest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      MAVEN_OPTS: -Xmx2560m
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build server + raw distribution
+        run: ./mvnw -B -e -nsu -DskipTests -DskipExamples -DskipProtoLock=true -Pdistribution -pl quarkus/dist,quarkus/tests/integration -am install
+      - name: Run FipsTruststoreDistTest + regression
+        run: |
+          set -o pipefail
+          ./mvnw -B -e -nsu test -pl quarkus/tests/integration -Dtest=FipsTruststoreDistTest,FipsDistTest,TruststoreDistTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee dist-fips.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dist-fips-logs
+          path: |
+            dist-fips.log
+            quarkus/tests/integration/target/surefire-reports/**
