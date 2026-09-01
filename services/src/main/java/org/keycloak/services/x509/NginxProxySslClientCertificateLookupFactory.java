@@ -10,6 +10,7 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.truststore.TruststoreProvider;
 import org.keycloak.truststore.TruststoreProviderFactory;
+import org.keycloak.truststore.TruststoreReloadListener;
 
 import org.jboss.logging.Logger;
 
@@ -22,7 +23,8 @@ import org.jboss.logging.Logger;
  * @since 10/09/2018
  */
 
-public class NginxProxySslClientCertificateLookupFactory extends AbstractClientCertificateFromHttpHeadersLookupFactory {
+public class NginxProxySslClientCertificateLookupFactory extends AbstractClientCertificateFromHttpHeadersLookupFactory
+        implements TruststoreReloadListener {
 
     private static final Logger logger = Logger.getLogger(NginxProxySslClientCertificateLookupFactory.class);
 
@@ -38,9 +40,9 @@ public class NginxProxySslClientCertificateLookupFactory extends AbstractClientC
 
     private volatile boolean isTruststoreLoaded;
 
-    private Set<X509Certificate> trustedRootCerts;
+    private volatile Set<X509Certificate> trustedRootCerts;
 
-    private Set<X509Certificate> intermediateCerts;
+    private volatile Set<X509Certificate> intermediateCerts;
 
     @Override
     public void init(Config.Scope config) {
@@ -72,6 +74,11 @@ public class NginxProxySslClientCertificateLookupFactory extends AbstractClientC
         return PROVIDER;
     }
 
+    @Override
+    public void truststoreReloaded(KeycloakSession session) {
+        isTruststoreLoaded = false;
+    }
+
     /**  Loading truststore @ first login
      *
      * @param kcSession keycloak session
@@ -95,8 +102,13 @@ public class NginxProxySslClientCertificateLookupFactory extends AbstractClientC
                 Set<X509Certificate> rootCertificates = provider.getRootCertificates().entrySet().stream().flatMap(t -> t.getValue().stream()).collect(Collectors.toSet());
                 Set<X509Certificate> intermediateCertficiates = provider.getIntermediateCertificates().entrySet().stream().flatMap(t -> t.getValue().stream()).collect(Collectors.toSet());
 
-                trustedRootCerts.addAll(rootCertificates);
-                intermediateCerts.addAll(intermediateCertficiates);
+                Set<X509Certificate> newTrustedRootCerts = ConcurrentHashMap.newKeySet(rootCertificates.size());
+                newTrustedRootCerts.addAll(rootCertificates);
+                Set<X509Certificate> newIntermediateCerts = ConcurrentHashMap.newKeySet(intermediateCertficiates.size());
+                newIntermediateCerts.addAll(intermediateCertficiates);
+
+                trustedRootCerts = newTrustedRootCerts;
+                intermediateCerts = newIntermediateCerts;
                 logger.debug("Keycloak truststore loaded for NGINX x509cert-lookup provider.");
 
                 isTruststoreLoaded = true;

@@ -15,6 +15,7 @@ import org.keycloak.tests.forms.LoginSSLTest;
 import org.keycloak.tests.forms.LoginTest;
 import org.keycloak.tests.keys.JavaKeystoreKeyProviderTest;
 import org.keycloak.tests.oid4vc.issuance.signing.OID4VCSdJwtIssuingEndpointTest;
+import org.keycloak.tests.truststore.TruststoreReloadTest;
 
 import org.junit.platform.suite.api.AfterSuite;
 import org.junit.platform.suite.api.BeforeSuite;
@@ -29,7 +30,8 @@ import org.junit.platform.suite.api.Suite;
         OID4VCSdJwtIssuingEndpointTest.class,
         MutualTLSClientTest.class,
         LoginTest.class,
-        LoginSSLTest.class
+        LoginSSLTest.class,
+        TruststoreReloadTest.class
 })
 public class FipsStrictTestSuite {
 
