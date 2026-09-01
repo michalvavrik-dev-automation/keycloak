@@ -12,7 +12,7 @@ The certificates of these clients or servers, or the CA that signed these certif
 
 == Configuring the System Truststore
 
-The existing Java default truststore certs will always be trusted.  If you need additional certificates, which will be the case if you have self-signed or internal certificate authorities that are not recognized by the JRE, they can be included in the `conf/truststores` directory or subdirectories.  The certs may be in PEM files, or passwordless PKCS12 files with extension `.p12`, `.pfx`, or `.pkcs12`.  A PKCS12 file must have no MAC or an empty password; password-protected PKCS12 files are not supported.
+The existing Java default truststore certs will always be trusted.  If you need additional certificates, which will be the case if you have self-signed or internal certificate authorities that are not recognized by the JRE, they can be included in the `conf/truststores` directory or subdirectories.  The certs may be in PEM files, or passwordless PKCS12 files with extension `.p12`, `.pfx`, or `.pkcs12`. Such a file must either have no MAC, or a MAC computed with an empty password; files that use a non-empty password are not supported.
 
 If you need an alternative path, use the `--truststore-paths` option to specify additional files or directories where PEM or PKCS12 files are located. Paths are relative to where you launched {project_name}, so absolute paths are recommended instead. If a directory is specified, it will be recursively scanned for truststore files.
 
@@ -35,10 +35,6 @@ When set, {project_name} periodically re-reads the files and directories referen
 For example, to reload the system truststore every hour:
 
 <@kc.start parameters="--truststore-paths=/opt/truststore/myTrustStore.pem --truststore-paths-reload-period=1h" />
-
-Reloading is graceful and is intended to run proactively, before the current certificates expire. Requests and connections already in progress continue to use the previous truststore and complete normally; only new requests and connections use the reloaded truststore. Reloading works in both FIPS strict and non-strict modes.
-
-NOTE: Pooled LDAP and LDAPS connections continue to use the previous truststore until they are recycled. New LDAP connections use the reloaded truststore.
 
 == Cluster CA certificates (Kubernetes and OpenShift)
 
