@@ -72,6 +72,10 @@ public class SSLSocketFactory extends javax.net.ssl.SSLSocketFactory implements 
         return instance;
     }
 
+    static synchronized void reset() {
+        instance = null;
+    }
+
     @Override
     public String[] getDefaultCipherSuites() {
         return sslsf.getDefaultCipherSuites();

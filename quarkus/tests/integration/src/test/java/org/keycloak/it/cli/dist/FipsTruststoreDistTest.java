@@ -17,8 +17,12 @@
 
 package org.keycloak.it.cli.dist;
 
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.KeyStore;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 
 import org.keycloak.it.junit5.extension.CLIResult;
 import org.keycloak.it.junit5.extension.DistributionTest;
@@ -114,10 +118,145 @@ public class FipsTruststoreDistTest {
         assertFalse(Files.exists(rawDist.getDistPath().resolve("data").resolve("keycloak-truststore.p12")));
     }
 
+    /**
+     * Settles whether the system truststore works under FIPS non-strict (issue #51680): {@code truststore-paths}
+     * with the auto-included default truststore (KeycloakRecorder passes {@code includeDefault=true}) merges the
+     * JVM {@code cacerts} (PKCS12) at startup. This is the path suspected to fail when {@code cacerts} is read
+     * with a null password under non-approved BCFIPS. The server must start.
+     */
+    @Test
+    void testTruststorePathsWithDefaultTruststoreInNonStrictMode(KeycloakRunner runner) {
+        RawKeycloakDistribution rawDist = runner.getDistribution(RawKeycloakDistribution.class);
+        installBcFips(rawDist);
+
+        rawDist.copyOrReplaceFileFromClasspath("/self-signed.pem", Path.of("conf", "self-signed.pem"));
+
+        Path truststorePath = rawDist.getDistPath().resolve("conf").resolve("self-signed.pem").toAbsolutePath();
+
+        CLIResult cliResult = runner.run("--verbose", "start", "--features=fips", "--fips-mode=non-strict",
+                "--truststore-paths=" + truststorePath);
+        cliResult.assertStarted();
+        cliResult.assertMessage("FIPS1402Provider created");
+    }
+
+    /**
+     * JKS default truststore under FIPS non-strict (issue #51680): the JVM default truststore is declared as
+     * PKCS12 but its bytes are really JKS - a common mismatch on FIPS hosts. BCFIPS rejects the JKS bytes as
+     * PKCS12 ("stream does not represent a PKCS12 key store"), so {@code TruststoreBuilder.loadDefaultTruststore}
+     * must fall back to loading it as JKS through the SUN provider. The server must start.
+     */
+    @Test
+    void testJksDefaultTruststoreFallbackInNonStrictMode(KeycloakRunner runner) throws Exception {
+        RawKeycloakDistribution rawDist = runner.getDistribution(RawKeycloakDistribution.class);
+        installBcFips(rawDist);
+
+        rawDist.copyOrReplaceFileFromClasspath("/self-signed.pem", Path.of("conf", "self-signed.pem"));
+        Path truststorePath = rawDist.getDistPath().resolve("conf").resolve("self-signed.pem").toAbsolutePath();
+        // Content is JKS, but the JVM is told it is PKCS12 to force the PKCS12 -> JKS fallback.
+        Path cacerts = writeDefaultTruststore(rawDist, "cacerts.jks", "JKS", "changeit".toCharArray());
+
+        runner.setEnvVar("JAVA_OPTS_APPEND",
+                "-Djavax.net.ssl.trustStore=" + cacerts
+                + " -Djavax.net.ssl.trustStoreType=PKCS12"
+                + " -Djavax.net.ssl.trustStorePassword=changeit");
+
+        CLIResult cliResult = runner.run("--verbose", "start", "--features=fips", "--fips-mode=non-strict",
+                "--truststore-paths=" + truststorePath);
+        cliResult.assertStarted();
+        cliResult.assertMessage("FIPS1402Provider created");
+    }
+
+    /**
+     * Genuine PKCS12 default truststore under FIPS non-strict: it loads with the "changeit" default password that
+     * {@code TruststoreBuilder} applies to the auto-discovered cacerts. The server must start.
+     */
+    @Test
+    void testPkcs12DefaultTruststoreInNonStrictMode(KeycloakRunner runner) throws Exception {
+        RawKeycloakDistribution rawDist = runner.getDistribution(RawKeycloakDistribution.class);
+        installBcFips(rawDist);
+
+        rawDist.copyOrReplaceFileFromClasspath("/self-signed.pem", Path.of("conf", "self-signed.pem"));
+        Path truststorePath = rawDist.getDistPath().resolve("conf").resolve("self-signed.pem").toAbsolutePath();
+        Path cacerts = writeDefaultTruststore(rawDist, "cacerts.p12", "PKCS12", "changeit".toCharArray());
+
+        runner.setEnvVar("JAVA_OPTS_APPEND",
+                "-Djavax.net.ssl.trustStore=" + cacerts
+                + " -Djavax.net.ssl.trustStoreType=PKCS12"
+                + " -Djavax.net.ssl.trustStorePassword=changeit");
+
+        CLIResult cliResult = runner.run("--verbose", "start", "--features=fips", "--fips-mode=non-strict",
+                "--truststore-paths=" + truststorePath);
+        cliResult.assertStarted();
+        cliResult.assertMessage("FIPS1402Provider created");
+    }
+
+    /**
+     * Negative control: an explicitly configured PKCS12 default truststore with NO trustStorePassword. The
+     * "changeit" default is only applied to the auto-discovered cacerts, not to an explicit
+     * {@code javax.net.ssl.trustStore}, so BCFIPS non-strict rejects the null PKCS12 password and the JKS fallback
+     * cannot read a genuine PKCS12 either. This proves the fallback does not mask a genuine truststore failure.
+     */
+    @Test
+    void testCorruptTruststorePathFailsInNonStrictMode(KeycloakRunner runner) throws Exception {
+        RawKeycloakDistribution rawDist = runner.getDistribution(RawKeycloakDistribution.class);
+        installBcFips(rawDist);
+
+        // A genuinely unreadable truststore-paths entry must fail startup: the null/"" and JKS fallbacks
+        // must not silently swallow a corrupt file.
+        Path corrupt = rawDist.getDistPath().resolve("conf").resolve("corrupt.p12");
+        Files.createDirectories(corrupt.getParent());
+        Files.writeString(corrupt, "this is not a valid keystore");
+
+        CLIResult cliResult = runner.run("--verbose", "start", "--features=fips", "--fips-mode=non-strict",
+                "--truststore-paths=" + corrupt.toAbsolutePath());
+        cliResult.assertError("Failed to initialize truststore");
+    }
+
+    /**
+     * A passwordless (no-MAC) PKCS12 file in truststore-paths under FIPS non-strict. BCFIPS rejects a null PKCS12
+     * password, so {@code TruststoreBuilder.mergeFiles} must retry loading the file with an empty-string password
+     * (the null -> "" gap). The server must start.
+     */
+    @Test
+    void testPasswordlessPkcs12TruststorePathInNonStrictMode(KeycloakRunner runner) throws Exception {
+        RawKeycloakDistribution rawDist = runner.getDistribution(RawKeycloakDistribution.class);
+        installBcFips(rawDist);
+
+        // No-MAC PKCS12 (stored with a null password), the only PKCS12 flavour truststore-paths has ever supported.
+        Path truststorePath = writeDefaultTruststore(rawDist, "self-signed.p12", "PKCS12", null);
+
+        CLIResult cliResult = runner.run("--verbose", "start", "--features=fips", "--fips-mode=non-strict",
+                "--truststore-paths=" + truststorePath);
+        cliResult.assertStarted();
+        cliResult.assertMessage("FIPS1402Provider created");
+    }
+
     private void installBcFips(RawKeycloakDistribution rawDist) {
         rawDist.copyProvider("org.bouncycastle", "bc-fips");
         rawDist.copyProvider("org.bouncycastle", "bctls-fips");
         rawDist.copyProvider("org.bouncycastle", "bcpkix-fips");
         rawDist.copyProvider("org.bouncycastle", "bcutil-fips");
+    }
+
+    /**
+     * Writes a cacerts-style keystore holding the {@code /self-signed.pem} certificate into {@code conf/}. The
+     * keystore type ({@code JKS} or {@code PKCS12}) and the store password (may be {@code null} for a no-MAC
+     * PKCS12) are chosen by the caller. Returns the absolute path to the written file.
+     */
+    private Path writeDefaultTruststore(RawKeycloakDistribution rawDist, String fileName, String keystoreType,
+            char[] password) throws Exception {
+        X509Certificate certificate;
+        try (InputStream pem = getClass().getResourceAsStream("/self-signed.pem")) {
+            certificate = (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(pem);
+        }
+        KeyStore keyStore = KeyStore.getInstance(keystoreType);
+        keyStore.load(null, null);
+        keyStore.setCertificateEntry("self-signed", certificate);
+        Path path = rawDist.getDistPath().resolve("conf").resolve(fileName);
+        Files.createDirectories(path.getParent());
+        try (var out = Files.newOutputStream(path)) {
+            keyStore.store(out, password);
+        }
+        return path.toAbsolutePath();
     }
 }

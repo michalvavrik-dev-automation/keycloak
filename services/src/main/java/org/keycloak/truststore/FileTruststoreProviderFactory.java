@@ -54,13 +54,14 @@ import org.jboss.logging.Logger;
 /**
  * @author <a href="mailto:mstrukel@redhat.com">Marko Strukelj</a>
  */
-public class FileTruststoreProviderFactory implements TruststoreProviderFactory {
+public class FileTruststoreProviderFactory implements TruststoreProviderFactory, TruststoreReloadListener {
 
     static final String HOSTNAME_VERIFICATION_POLICY = "hostname-verification-policy";
 
     private static final Logger log = Logger.getLogger(FileTruststoreProviderFactory.class);
 
-    private TruststoreProvider provider;
+    private volatile TruststoreProvider provider;
+    private volatile Config.Scope config;
 
     @Override
     public TruststoreProvider create(KeycloakSession session) {
@@ -73,7 +74,13 @@ public class FileTruststoreProviderFactory implements TruststoreProviderFactory 
     }
 
     @Override
+    public void truststoreReloaded(KeycloakSession session) {
+        init(config);
+    }
+
+    @Override
     public void init(Config.Scope config) {
+        this.config = config;
 
         String storepath = config.get("file");
         String pass = config.get("password");
