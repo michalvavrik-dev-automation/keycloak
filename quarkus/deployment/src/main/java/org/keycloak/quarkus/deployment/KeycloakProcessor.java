@@ -574,12 +574,7 @@ class KeycloakProcessor {
         Set<String> mappingFiles = new LinkedHashSet<>(descriptor.getMappingFileNames());
         boolean implicitOrmXml = mappingFiles.isEmpty();
         if (implicitOrmXml) {
-            if (!descriptor.getManagedClassNames().isEmpty()) {
-                mappingFiles.add("META-INF/orm.xml");
-            } else {
-                builder.mappingFile("no-file");
-                return;
-            }
+            mappingFiles.add("META-INF/orm.xml");
         }
         boolean anyMappingFound = false;
         try (QuarkusMappingFileParser parser = QuarkusMappingFileParser.create()) {

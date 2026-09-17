@@ -1,0 +1,11 @@
+--- quarkus/deployment/src/main/java/org/keycloak/quarkus/deployment/KeycloakProcessor.java
++++ quarkus/deployment/src/main/java/org/keycloak/quarkus/deployment/KeycloakProcessor.java
+@@ -537,7 +537,7 @@
+             for (String mappingFile : descriptor.getMappingFileNames()) {
+                 builder.mappingFile(mappingFile);
+             }
+-            enlistMappingFileEntities(builder, descriptor);
++            // enlistMappingFileEntities(builder, descriptor);
+             String resolvedDialect = resolveUserDefinedDialect(descriptor, datasourceName);
+             if (resolvedDialect != null) {
+                 builder.dialect(resolvedDialect);

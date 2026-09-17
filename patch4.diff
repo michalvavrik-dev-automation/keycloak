@@ -1,0 +1,14 @@
+--- quarkus/deployment/src/main/java/org/keycloak/quarkus/deployment/KeycloakProcessor.java
++++ quarkus/deployment/src/main/java/org/keycloak/quarkus/deployment/KeycloakProcessor.java
+@@ -578,10 +578,11 @@
+         }
+         boolean anyMappingFound = false;
+         try (QuarkusMappingFileParser parser = QuarkusMappingFileParser.create()) {
+             for (String mappingFile : mappingFiles) {
+-                logger.debugf("Parsing mapping file '%s' for PU '%s' with root URL '%s'",
++                logger.infof("TEST_LOG_PREFIX: Parsing mapping file '%s' for PU '%s' with root URL '%s'",
+                         mappingFile, descriptor.getName(), descriptor.getPersistenceUnitRootUrl());
+                 Optional<RecordableXmlMapping> mappingOptional = parser.parse(
+                         descriptor.getName(), descriptor.getPersistenceUnitRootUrl(), mappingFile);
+-                logger.debugf("Parsed mapping file result present: %s", mappingOptional.isPresent());
++                logger.infof("TEST_LOG_PREFIX: Parsed mapping file result present: %s", mappingOptional.isPresent());
