@@ -24,8 +24,10 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -164,6 +166,7 @@ import io.quarkus.vertx.http.deployment.VertxWebRouterBuildItem;
 import io.quarkus.vertx.http.runtime.security.SecurityHandlerPriorities;
 import org.eclipse.microprofile.config.spi.ConfigSource;
 import org.eclipse.microprofile.health.Readiness;
+import org.hibernate.boot.archive.internal.ArchiveHelper;
 import org.hibernate.boot.jaxb.mapping.spi.JaxbEmbeddable;
 import org.hibernate.boot.jaxb.mapping.spi.JaxbEntity;
 import org.hibernate.boot.jaxb.mapping.spi.JaxbEntityMappingsImpl;
@@ -668,25 +671,24 @@ class KeycloakProcessor {
     @BuildStep
     void contributeStandaloneMappingFilesToDefaultPU(BuildProducer<JpaModelPersistenceUnitContributionBuildItem> producer) {
         try {
-            org.hibernate.jpa.boot.spi.PersistenceXmlParser parser = org.hibernate.jpa.boot.spi.PersistenceXmlParser.create();
-            java.util.List<java.net.URL> persistenceUrls = parser.getClassLoaderService().locateResources("META-INF/persistence.xml");
-            java.util.Set<java.net.URL> persistenceRootUrls = new java.util.HashSet<>();
-            for (org.hibernate.jpa.boot.spi.PersistenceUnitDescriptor descriptor : parser.parse(persistenceUrls).values()) {
+            PersistenceXmlParser parser = PersistenceXmlParser.create();
+            List<URL> persistenceUrls = parser.getClassLoaderService().locateResources("META-INF/persistence.xml");
+            Set<URL> persistenceRootUrls = new HashSet<>();
+            for (PersistenceUnitDescriptor descriptor : parser.parse(persistenceUrls).values()) {
                 persistenceRootUrls.add(descriptor.getPersistenceUnitRootUrl());
             }
 
-            java.util.List<java.net.URL> ormXmlUrls = parser.getClassLoaderService().locateResources("META-INF/orm.xml");
-            for (java.net.URL ormUrl : ormXmlUrls) {
-                java.net.URL jarUrl = org.hibernate.boot.archive.internal.ArchiveHelper.getJarURLFromURLEntry(ormUrl, "META-INF/orm.xml");
-                logger.warnf("[DEBUG] orm.xml at %s | jarUrl %s | hasPersistenceXml: %s", ormUrl, jarUrl, persistenceRootUrls.contains(jarUrl));
+            List<URL> ormXmlUrls = parser.getClassLoaderService().locateResources("META-INF/orm.xml");
+            for (URL ormUrl : ormXmlUrls) {
+                URL jarUrl = ArchiveHelper.getJarURLFromURLEntry(ormUrl, "META-INF/orm.xml");
                 if (jarUrl != null && !persistenceRootUrls.contains(jarUrl)) {
-                    logger.warnf("Found standalone orm.xml at %s. Contributing to default persistence unit.", ormUrl);
+                    logger.debugf("Found standalone orm.xml at %s. Contributing to default persistence unit.", ormUrl);
                     producer.produce(new JpaModelPersistenceUnitContributionBuildItem(
-                            QUARKUS_DEFAULT_PERSISTENCE_UNIT, jarUrl, java.util.Collections.emptySet(), java.util.Set.of("META-INF/orm.xml")));
+                            QUARKUS_DEFAULT_PERSISTENCE_UNIT, jarUrl, Collections.emptySet(), Set.of("META-INF/orm.xml")));
                 }
             }
         } catch (Exception e) {
-            logger.warnf("Failed to scan for standalone orm.xml files: %s", e.getMessage());
+            logger.warn("Failed to scan for standalone orm.xml files", e);
         }
     }
 

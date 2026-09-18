@@ -29,6 +29,7 @@ public class StandaloneOrmXmlDistTest {
         assertTrue(defaultPuBlock.contains("com.acme.provider.standalone.StandaloneEntity"),
                 "StandaloneEntity (from standalone orm.xml) must be loaded into '<default>' PU");
 
+        cliResult.assertMessage("Contributing to default persistence unit.");
         cliResult.assertStartedDevMode();
     }
 

@@ -1,9 +1,7 @@
 package com.acme.provider.standalone;
 
-import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 
-@Entity
 public class StandaloneEntity {
     @jakarta.persistence.Id
     private String id;
