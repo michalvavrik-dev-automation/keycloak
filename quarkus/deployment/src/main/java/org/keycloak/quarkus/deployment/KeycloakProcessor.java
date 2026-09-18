@@ -664,17 +664,18 @@ class KeycloakProcessor {
     void contributeStandaloneMappingFilesToDefaultPU(BuildProducer<JpaModelPersistenceUnitContributionBuildItem> producer) {
         try {
             org.hibernate.jpa.boot.spi.PersistenceXmlParser parser = org.hibernate.jpa.boot.spi.PersistenceXmlParser.create();
-            List<URL> persistenceUrls = parser.getClassLoaderService().locateResources("META-INF/persistence.xml");
-            Set<URL> persistenceRootUrls = new java.util.HashSet<>();
+            java.util.List<java.net.URL> persistenceUrls = parser.getClassLoaderService().locateResources("META-INF/persistence.xml");
+            java.util.Set<java.net.URL> persistenceRootUrls = new java.util.HashSet<>();
             for (org.hibernate.jpa.boot.spi.PersistenceUnitDescriptor descriptor : parser.parse(persistenceUrls).values()) {
                 persistenceRootUrls.add(descriptor.getPersistenceUnitRootUrl());
             }
 
-            List<URL> ormXmlUrls = parser.getClassLoaderService().locateResources("META-INF/orm.xml");
-            for (URL ormUrl : ormXmlUrls) {
-                URL jarUrl = org.hibernate.boot.archive.internal.ArchiveHelper.getJarURLFromURLEntry(ormUrl, "META-INF/orm.xml");
+            java.util.List<java.net.URL> ormXmlUrls = parser.getClassLoaderService().locateResources("META-INF/orm.xml");
+            for (java.net.URL ormUrl : ormXmlUrls) {
+                java.net.URL jarUrl = org.hibernate.boot.archive.internal.ArchiveHelper.getJarURLFromURLEntry(ormUrl, "META-INF/orm.xml");
+                logger.warnf("[DEBUG] orm.xml at %s | jarUrl %s | hasPersistenceXml: %s", ormUrl, jarUrl, persistenceRootUrls.contains(jarUrl));
                 if (jarUrl != null && !persistenceRootUrls.contains(jarUrl)) {
-                    logger.debugf("Found standalone orm.xml at %s. Contributing to default persistence unit.", ormUrl);
+                    logger.warnf("Found standalone orm.xml at %s. Contributing to default persistence unit.", ormUrl);
                     producer.produce(new JpaModelPersistenceUnitContributionBuildItem(
                             QUARKUS_DEFAULT_PERSISTENCE_UNIT, jarUrl, java.util.Collections.emptySet(), java.util.Set.of("META-INF/orm.xml")));
                 }

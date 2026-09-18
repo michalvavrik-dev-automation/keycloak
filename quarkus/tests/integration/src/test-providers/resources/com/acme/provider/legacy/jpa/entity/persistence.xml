@@ -33,12 +33,21 @@
     </persistence-unit>
 
     <persistence-unit name="client-store" transaction-type="JTA">
+        <mapping-file>no-file</mapping-file>
         <jar-file>lib/does-not-exist.jar</jar-file>
         <properties>
             <property name="hibernate.dialect" value="org.hibernate.dialect.H2Dialect" />
         </properties>
     </persistence-unit>
 
+    <persistence-unit name="explicit-custom-store" transaction-type="JTA">
+        <mapping-file>META-INF/custom.xml</mapping-file>
+        <properties>
+            <property name="hibernate.dialect" value="org.hibernate.dialect.H2Dialect" />
+        </properties>
+    </persistence-unit>
+
     <persistence-unit name="pu-without-dialect-store" transaction-type="JTA">
+        <mapping-file>no-file</mapping-file>
     </persistence-unit>
 </persistence>
