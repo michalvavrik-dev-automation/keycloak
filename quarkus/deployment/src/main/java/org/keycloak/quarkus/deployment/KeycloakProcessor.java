@@ -144,6 +144,7 @@ import io.quarkus.deployment.builditem.IndexDependencyBuildItem;
 import io.quarkus.deployment.builditem.StaticInitConfigBuilderBuildItem;
 import io.quarkus.hibernate.orm.deployment.integration.HibernateOrmIntegrationRuntimeConfiguredBuildItem;
 import io.quarkus.hibernate.orm.deployment.integration.HibernateOrmIntegrationStaticConfiguredBuildItem;
+import io.quarkus.hibernate.orm.deployment.JpaModelPersistenceUnitContributionBuildItem;
 import io.quarkus.hibernate.orm.deployment.spi.AdditionalPersistenceUnitBuildItem;
 import io.quarkus.hibernate.orm.deployment.xml.QuarkusMappingFileParser;
 import io.quarkus.hibernate.orm.runtime.PersistenceUnitUtil;
@@ -657,6 +658,30 @@ class KeycloakProcessor {
                 .map(f -> f.equalsIgnoreCase(PersistenceUnitTransactionType.RESOURCE_LOCAL.name()))
                 .orElse(false);
         return isJakartaResourceLocal || isJavaxResourceLocal;
+    }
+
+    @BuildStep
+    void contributeStandaloneMappingFilesToDefaultPU(BuildProducer<JpaModelPersistenceUnitContributionBuildItem> producer) {
+        try {
+            org.hibernate.jpa.boot.spi.PersistenceXmlParser parser = org.hibernate.jpa.boot.spi.PersistenceXmlParser.create();
+            List<URL> persistenceUrls = parser.getClassLoaderService().locateResources("META-INF/persistence.xml");
+            Set<URL> persistenceRootUrls = new java.util.HashSet<>();
+            for (org.hibernate.jpa.boot.spi.PersistenceUnitDescriptor descriptor : parser.parse(persistenceUrls).values()) {
+                persistenceRootUrls.add(descriptor.getPersistenceUnitRootUrl());
+            }
+
+            List<URL> ormXmlUrls = parser.getClassLoaderService().locateResources("META-INF/orm.xml");
+            for (URL ormUrl : ormXmlUrls) {
+                URL jarUrl = org.hibernate.boot.archive.internal.ArchiveHelper.getJarURLFromURLEntry(ormUrl, "META-INF/orm.xml");
+                if (jarUrl != null && !persistenceRootUrls.contains(jarUrl)) {
+                    logger.debugf("Found standalone orm.xml at %s. Contributing to default persistence unit.", ormUrl);
+                    producer.produce(new JpaModelPersistenceUnitContributionBuildItem(
+                            QUARKUS_DEFAULT_PERSISTENCE_UNIT, jarUrl, java.util.Collections.emptySet(), java.util.Set.of("META-INF/orm.xml")));
+                }
+            }
+        } catch (Exception e) {
+            logger.warnf("Failed to scan for standalone orm.xml files: %s", e.getMessage());
+        }
     }
 
     @BuildStep
