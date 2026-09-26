@@ -990,6 +990,35 @@ public class ConfigurationTest extends AbstractConfigurationTest {
         assertEquals("30s", config.getConfigValue(DatabasePropertyMappers.JDBC_LOGIN_TIMEOUT).getValue());
         assertEquals("PT1M", config.getConfigValue(DatabasePropertyMappers.JDBC_ACQUISITION_TIMEOUT).getValue());
 
+        // Oracle, with the mappers sanitized as at runtime: exactly one of the two Oracle mappers stays enabled
+        resetConfiguration();
+        ConfigArgsConfigSource.setCliArgs("--db=oracle");
+        createConfig();
+        PropertyMappers.sanitizeDisabledMappers(new Start());
+        config = createConfig();
+        assertTrue(DatabasePropertyMappers.isOracleConnectTimeoutEnabled());
+        assertFalse(DatabasePropertyMappers.isOracleXaConnectTimeoutEnabled());
+        assertEquals("10000", config.getConfigValue(DatabasePropertyMappers.ORACLEDB_CONNECT_TIMEOUT).getValue());
+        assertNull(config.getConfigValue(DatabasePropertyMappers.ORACLEDB_CONNECTION_PROPERTIES).getValue());
+
+        resetConfiguration();
+        ConfigArgsConfigSource.setCliArgs("--db=oracle", "--transaction-xa-enabled=true");
+        createConfig();
+        PropertyMappers.sanitizeDisabledMappers(new Start());
+        config = createConfig();
+        assertFalse(DatabasePropertyMappers.isOracleConnectTimeoutEnabled());
+        assertTrue(DatabasePropertyMappers.isOracleXaConnectTimeoutEnabled());
+        assertEquals("oracle.net.CONNECT_TIMEOUT=10000", config.getConfigValue(DatabasePropertyMappers.ORACLEDB_CONNECTION_PROPERTIES).getValue());
+        assertNull(config.getConfigValue(DatabasePropertyMappers.ORACLEDB_CONNECT_TIMEOUT).getValue());
+
+        resetConfiguration();
+        ConfigArgsConfigSource.setCliArgs("--db=oracle", "--transaction-xa-enabled=true", "--db-connect-timeout=30s");
+        createConfig();
+        PropertyMappers.sanitizeDisabledMappers(new Start());
+        config = createConfig();
+        assertEquals("oracle.net.CONNECT_TIMEOUT=30000", config.getConfigValue(DatabasePropertyMappers.ORACLEDB_CONNECTION_PROPERTIES).getValue());
+        assertNull(config.getConfigValue(DatabasePropertyMappers.ORACLEDB_CONNECT_TIMEOUT).getValue());
+
         // PostgreSQL:
         resetConfiguration();
         ConfigArgsConfigSource.setCliArgs("--db=postgres");
