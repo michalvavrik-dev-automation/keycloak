@@ -113,7 +113,8 @@ The following table shows whether a resource without a value for `attribute` is 
 | Never matches
 |===
 
-The `null` literal is accepted only with `eq` and `ne`.
+The `eq` and `ne` operators accept the `null` literal, but the comparison never matches, so it cannot be used to find
+resources without a value.
 
 == Logical operators
 
