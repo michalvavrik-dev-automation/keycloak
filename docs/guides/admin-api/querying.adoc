@@ -65,14 +65,12 @@ For the full syntax reference, including operator precedence and detailed exampl
 The `gt`, `ge`, `lt`, and `le` operators supported by the SCIM API are not available for client filtering.
 ====
 
-=== Null values
+=== Fields without a value
 
-The `null` literal is accepted only with the `eq` and `ne` operators.
-Comparisons with `null` follow the three-valued logic of SQL, so `description eq null` and `description ne null` never match a client, not even a client without a description.
-For the same reason, `description ne "internal"` does not match clients without a description.
-To test for presence, use the presence operator `pr`, which is true when a field has a value, and negate it to test for absence.
-For example, `description pr` matches clients with a description, and `not description pr` matches clients without one.
-For details, see link:{adminguide_link}#_scim_filtering_null_values[Comparing with null values] in the {adminguide_name}.
+A comparison with a field that has no value is never true.
+For example, `auth.method ne "client-secret"` does not return SAML clients or public clients, because they have no authentication method. Use `not auth.method pr` to find them.
+`description eq null` never matches either, and `null` is accepted only with `eq` and `ne`.
+For details, see link:{adminguide_link}#_scim_filtering_null_values[Attributes without a value] in the {adminguide_name}.
 
 === Queryable fields
 
@@ -87,9 +85,7 @@ Using an unknown field returns HTTP 400, unlike the SCIM API which silently igno
 
 These fields are available only for `openid-connect` clients.
 They resolve to `null` for SAML clients, so value-based comparisons like `eq`, `ne`, `co`, or `sw` do not match SAML clients.
-To find clients where such a field is absent, negate the presence operator `pr`, which is true only when the field has a value.
-For example, `not auth.method pr` matches every client without an authentication method.
-Comparing the field with `null` never matches, as described in <<Null values>>.
+See <<Fields without a value>>.
 
 <@api.queryableFields group="openid-connect"/>
 
@@ -97,8 +93,7 @@ Comparing the field with `null` never matches, as described in <<Null values>>.
 
 These fields are available only for `saml` clients.
 They resolve to `null` for OIDC clients, so value-based comparisons like `eq`, `ne`, `co`, or `sw` do not match OIDC clients.
-To find clients where such a field is absent, negate the presence operator `pr`, which is true only when the field has a value.
-Comparing the field with `null` never matches, as described in <<Null values>>.
+See <<Fields without a value>>.
 
 <@api.queryableFields group="saml"/>
 
