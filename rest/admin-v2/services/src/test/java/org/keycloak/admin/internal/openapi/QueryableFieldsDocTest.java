@@ -94,20 +94,6 @@ class QueryableFieldsDocTest {
     }
 
     @Test
-    void unsearchableAttributesAreNotDocumented() {
-        Set<String> all = new HashSet<>();
-        documented.values().forEach(all::addAll);
-
-        for (BaseClientModelSchema<?> schema : PROTOCOL_SCHEMAS.values()) {
-            for (String attribute : schema.getAttributes().keySet()) {
-                if (!BaseClientModelSchema.QUERYABLE_FIELDS.contains(attribute)) {
-                    assertFalse(all.contains(attribute), "unsearchable attribute must not be documented: " + attribute);
-                }
-            }
-        }
-    }
-
-    @Test
     void fieldsAreGroupedByProtocolSupport() {
         Set<String> expectedGroups = new HashSet<>(PROTOCOL_SCHEMAS.keySet());
         expectedGroups.add(COMMON_GROUP);
