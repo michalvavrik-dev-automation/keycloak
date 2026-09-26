@@ -75,6 +75,18 @@ NOTE: The `gt`, `ge`, `lt`, and `le` operators are supported on date/time attrib
 or boolean attributes. Invalid operator/type combinations return a `400 Bad Request` response with
 `scimType: "invalidFilter"`.
 
+[[_scim_filtering_null_values]]
+== Attributes without a value
+
+Filters are evaluated in the database, where a comparison with a missing value is neither true nor false, and the
+resource is not returned. This has the following consequences:
+
+* `attribute ne "value"` and `not (attribute eq "value")` do not return resources where the attribute has no value.
+Use `not (attribute pr)` to find those resources.
+* For a multi-valued attribute, `attribute ne "value"` returns only resources that have at least one other value.
+`not (attribute eq "value")` also returns resources without any value.
+* `attribute eq null` and `attribute ne null` never match. The `null` literal is accepted only with `eq` and `ne`.
+
 == Logical operators
 
 Filters can be combined using logical operators:
@@ -291,6 +303,8 @@ default order of the underlying store, consistent with the {project_name} Admin 
 simultaneously. Use `or` to match either value.
 * *Operator and attribute-type compatibility is enforced.* String operators (`sw`, `ew`, `co`) cannot be used on
 date/time or boolean attributes, and incompatible combinations are rejected. See <<Comparison operators>>.
+* *Comparisons skip attributes without a value.* `attribute ne "value"` and `attribute eq null` do not match resources
+where the attribute has no value. Use `not (attribute pr)` to find them. See <<Attributes without a value>>.
 * *Membership filters carry extra restrictions.* The `groups.value` and `members.value` paths behave differently under
 fine-grained admin permissions and with LDAP `LDAP_ONLY` group mappers. See <<Filtering by group membership>>.
 
@@ -314,3 +328,4 @@ Common causes of filter errors:
 *   Unknown filter operators.
 *   Using an operator on an incompatible attribute type (for example, `gt` on a boolean).
 *   Using string operators (`sw`, `ew`, `co`) on date/time attributes.
+*   Using `null` with an operator other than `eq` or `ne`.
