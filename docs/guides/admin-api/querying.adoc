@@ -24,7 +24,7 @@ GET /admin/api/{realmName}/clients/v2?q=clientId eq "my-app"
 GET /admin/api/{realmName}/clients/v2?q=enabled eq true
 ----
 
-=== Supported operators
+== Supported operators
 
 The following comparison operators are supported for client filtering:
 
@@ -65,41 +65,43 @@ For the full syntax reference, including operator precedence and detailed exampl
 The `gt`, `ge`, `lt`, and `le` operators supported by the SCIM API are not available for client filtering.
 ====
 
-=== Queryable fields
+== Queryable fields
 
-Only registered fields can be used in filter expressions.
-Using an unknown field returns HTTP 400, unlike the SCIM API which silently ignores unrecognized attributes.
+Only the fields listed below can be used in filter expressions.
+Other fields of the client representation are not searchable.
+Using an unsearchable or unknown field returns HTTP 400, unlike the SCIM API which silently ignores unrecognized attributes.
 
-==== Common fields (all client types)
+=== Common fields (all client types)
 
 <@api.queryableFields group="common"/>
 
-==== OIDC-specific fields
+<#if ctx.adminApiV2.getQueryableFields("openid-connect")?has_content>
+=== OIDC-specific fields
 
 These fields are available only for `openid-connect` clients.
 They resolve to `null` for SAML clients, so value-based comparisons like `eq`, `co`, or `sw` will not match.
-However, `eq null` and `not ... pr` will match because the field is genuinely absent.
+Use `not <field> pr` to match clients where the field is absent.
 
 <@api.queryableFields group="openid-connect"/>
 
-==== SAML-specific fields
+</#if>
+<#if ctx.adminApiV2.getQueryableFields("saml")?has_content>
+=== SAML-specific fields
 
 These fields are available only for `saml` clients.
 They resolve to `null` for OIDC clients, so value-based comparisons like `eq`, `co`, or `sw` will not match.
-However, `eq null` and `not ... pr` will match because the field is genuinely absent.
+Use `not <field> pr` to match clients where the field is absent.
 
 <@api.queryableFields group="saml"/>
 
-=== Collection field matching
+</#if>
+== Collection field matching
 
-For fields that hold a collection of values (`redirectUris`, `roles`, `loginFlows`, `webOrigins`, `serviceAccountRoles`), the `eq`, `co`, `sw`, and `ew` operators match if *any* element in the collection satisfies the condition:
+For multi-valued fields (type `Set<String>` in the tables above), the `eq`, `ne`, `co`, `sw`, and `ew` operators match if *any* element in the collection satisfies the condition:
 
 * `roles eq "admin"` - matches clients that have a role named `admin`
-* `redirectUris co "example.com"` - matches clients with any redirect URI containing `example.com`
-* `loginFlows eq "SERVICE_ACCOUNT"` - matches OIDC clients with the service account flow enabled
-
-The `ne` operator is the logical negation of `eq`: it matches if *no* element in the collection equals the value.
-For example, `roles ne "admin"` matches clients that do not have a role named `admin`.
+* `roles co "adm"` - matches clients that have a role whose name contains `adm`
+* `roles ne "admin"` - matches clients that have at least one role other than `admin`
 
 To match clients that have multiple values, combine conditions with `and`:
 
@@ -108,7 +110,10 @@ To match clients that have multiple values, combine conditions with `and`:
 q=roles eq "admin" and roles eq "user"
 ----
 
-=== Examples
+To exclude clients that have a value, negate the condition with `not`.
+For example, `not (roles eq "admin")` matches clients that do not have a role named `admin`, including clients without any roles.
+
+== Examples
 
 Find all enabled OIDC clients:
 
@@ -131,13 +136,6 @@ Find OIDC clients using client-secret authentication:
 GET /admin/api/{realmName}/clients/v2?q=auth.method eq "client-secret"
 ----
 
-Find SAML clients with document signing enabled:
-
-[source]
-----
-GET /admin/api/{realmName}/clients/v2?q=signDocuments eq true
-----
-
 Find clients by display name prefix, excluding a specific protocol:
 
 [source]
@@ -145,7 +143,7 @@ Find clients by display name prefix, excluding a specific protocol:
 GET /admin/api/{realmName}/clients/v2?q=displayName sw "My" and protocol ne "saml"
 ----
 
-=== Projection
+== Projection
 
 Use the `fields` query parameter to include only specific fields in the response.
 If omitted, all fields are returned.
@@ -163,12 +161,13 @@ The filter evaluates against the full representation before projection is applie
 GET /admin/api/{realmName}/clients/v2?q=enabled eq true&fields=clientId,displayName
 ----
 
-=== Error handling
+== Error handling
 
 The server returns HTTP 400 with a descriptive error message when:
 
 * The filter expression has a syntax error.
 * The filter references an unknown field.
+* The filter references a field that is not searchable.
 * The filter uses an unsupported operator (e.g. `gt`, `ge`, `lt`, `le`).
 
 [source,json]
