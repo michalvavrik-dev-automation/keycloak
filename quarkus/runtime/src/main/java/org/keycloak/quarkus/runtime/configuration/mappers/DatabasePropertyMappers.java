@@ -137,9 +137,10 @@ public final class DatabasePropertyMappers implements PropertyMapperGrouping {
                                 -> durationToMillis(value))
                         .isEnabled(DatabasePropertyMappers::isMariadbConnectTimeoutEnabled)
                         .build(),
-                fromOption(DatabaseOptions.DB_CONNECT_TIMEOUT)
+                fromOption(DatabaseOptions.DB_ORACLE_CONNECTION_PROPERTIES)
                         .to(ORACLEDB_CONNECTION_PROPERTIES)
                         .mapFrom(DatabaseOptions.DB_CONNECT_TIMEOUT, getOracleConnectTimeout(true))
+                        .isEnabled(DatabasePropertyMappers::isOracleConnectTimeoutEnabled)
                         .build(),
                 fromOption(DatabaseOptions.DB_ORACLE_CONNECT_TIMEOUT)
                         .to(ORACLEDB_CONNECT_TIMEOUT)

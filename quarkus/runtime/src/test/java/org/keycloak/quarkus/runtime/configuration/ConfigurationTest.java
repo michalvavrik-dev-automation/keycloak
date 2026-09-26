@@ -943,6 +943,12 @@ public class ConfigurationTest extends AbstractConfigurationTest {
         assertEquals("10s", config.getConfigValue(DatabasePropertyMappers.JDBC_LOGIN_TIMEOUT).getValue());
         assertEquals("PT20S", config.getConfigValue(DatabasePropertyMappers.JDBC_ACQUISITION_TIMEOUT).getValue());
 
+        config = createConfigFromCliArguments("--db=oracle", "--transaction-xa-enabled=true", "--db-connect-timeout=30s");
+        assertEquals("oracle.net.CONNECT_TIMEOUT=30000", config.getConfigValue(DatabasePropertyMappers.ORACLEDB_CONNECTION_PROPERTIES).getValue());
+        assertNull(config.getConfigValue(DatabasePropertyMappers.ORACLEDB_CONNECT_TIMEOUT).getValue());
+        assertEquals("30s", config.getConfigValue(DatabasePropertyMappers.JDBC_LOGIN_TIMEOUT).getValue());
+        assertEquals("PT1M", config.getConfigValue(DatabasePropertyMappers.JDBC_ACQUISITION_TIMEOUT).getValue());
+
         config = createConfigFromCliArguments("--db=oracle", "--transaction-xa-enabled=true", "--db-url-properties=?oracle.net.CONNECT_TIMEOUT=5000");
         assertNull(config.getConfigValue(DatabasePropertyMappers.ORACLEDB_CONNECTION_PROPERTIES).getValue());
         assertNull(config.getConfigValue(DatabasePropertyMappers.ORACLEDB_CONNECT_TIMEOUT).getValue());

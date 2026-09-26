@@ -226,6 +226,10 @@ public class DatabaseOptions {
             .category(OptionCategory.DATABASE)
             .hidden()
             .build();
+    public static final Option<String> DB_ORACLE_CONNECTION_PROPERTIES = new OptionBuilder<>("db-oracle-connection-properties", String.class)
+            .category(OptionCategory.DATABASE)
+            .hidden()
+            .build();
     public static final Option<String> DB_MSSQL_CONNECT_TIMEOUT = new OptionBuilder<>("db-mssql-login-timeout", String.class)
             .category(OptionCategory.DATABASE)
             .hidden()
