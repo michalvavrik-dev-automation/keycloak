@@ -108,6 +108,18 @@ public class ManagementPropertyMappers implements PropertyMapperGrouping {
                         .to(MGMT_TLS_PREFIX + "protocols")
                         .paramLabel("protocols")
                         .build(),
+                // the mode is inherited as-is, the Quarkus policy is derived from the resolved mode by the synthetic mapper below
+                fromOption(ManagementOptions.PQC_HTTP_MANAGEMENT)
+                        .isEnabled(ManagementPropertyMappers::isInheritedScheme, HTTP_MANAGEMENT_SCHEME_IS_INHERITED)
+                        .mapFrom(HttpOptions.PQC_HTTP_IN)
+                        .paramLabel("mode")
+                        .build(),
+                fromOption(ManagementOptions.PQC_HTTP_MANAGEMENT)
+                        .isEnabled(ManagementPropertyMappers::isInheritedScheme, HTTP_MANAGEMENT_SCHEME_IS_INHERITED)
+                        .mapFrom(ManagementOptions.PQC_HTTP_MANAGEMENT, HttpPropertyMappers::toQuarkusPqcEnforcementPolicy)
+                        .to(MGMT_TLS_PREFIX + HttpPropertyMappers.QUARKUS_PQC_ENFORCEMENT_POLICY)
+                        .paramLabel("mode")
+                        .build(),
                 fromOption(ManagementOptions.HTTPS_MANAGEMENT_CERTIFICATES_RELOAD_PERIOD)
                         .isEnabled(ManagementPropertyMappers::isInheritedScheme, HTTP_MANAGEMENT_SCHEME_IS_INHERITED)
                         .mapFrom(HttpOptions.HTTPS_CERTIFICATES_RELOAD_PERIOD)

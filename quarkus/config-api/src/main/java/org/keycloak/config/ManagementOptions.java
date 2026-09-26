@@ -19,6 +19,8 @@ package org.keycloak.config;
 import java.io.File;
 import java.util.List;
 
+import org.keycloak.common.crypto.PqcMode;
+
 import static org.keycloak.config.OptionsUtil.DURATION_DESCRIPTION;
 
 /**
@@ -96,6 +98,14 @@ public class ManagementOptions {
             .category(OptionCategory.MANAGEMENT)
             .description("The list of protocols to explicitly enable for the management server. If not given, the value is inherited from HTTP options. " + RELEVANT_MSG)
             .defaultValue(List.of("TLSv1.3,TLSv1.2"))
+            .build();
+
+    public static final Option<PqcMode> PQC_HTTP_MANAGEMENT = new OptionBuilder<>("pqc-http-management", PqcMode.class)
+            .category(OptionCategory.MANAGEMENT)
+            .description("Sets the post-quantum cryptography (PQC) mode for incoming HTTPS connections to the management interface. "
+                    + "See the '" + HttpOptions.PQC_HTTP_IN.getKey() + "' option for the available modes. "
+                    + "If not given, the value is inherited from HTTP options. " + RELEVANT_MSG)
+            .defaultValue(PqcMode.OPTIONAL)
             .build();
 
     public static final Option<String> HTTPS_MANAGEMENT_CERTIFICATES_RELOAD_PERIOD = new OptionBuilder<>("https-management-certificates-reload-period", String.class)

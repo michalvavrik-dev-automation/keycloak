@@ -182,6 +182,18 @@ Use the new `--https-certificate-key-file-password` option to provide the decryp
 The management interface also supports this via `--https-management-certificate-key-file-password`.
 For details, see <@links.server id="enabletls"/>.
 
+== Post-quantum cryptography mode for incoming HTTPS connections
+// https://github.com/keycloak/keycloak/issues/49851
+
+Preparing a deployment for quantum-safe TLS previously offered no way to require a post-quantum key exchange on the {project_name} HTTPS listeners.
+
+{project_name} now provides the `--pqc-http-in` option to set the post-quantum cryptography (PQC) mode of incoming HTTPS connections.
+The default `optional` mode negotiates a hybrid post-quantum key exchange, such as `X25519MLKEM768`, whenever the Java runtime and the client support it.
+The `enforce-hybrid` mode offers only hybrid post-quantum key exchange groups and rejects clients that do not support any of them.
+The management interface inherits the mode, and the `--pqc-http-management` option allows setting a different mode for it.
+Enforcing post-quantum cryptography requires a Java runtime whose TLS engine supports hybrid post-quantum key exchange, such as OpenJDK 27.
+For details, see <@links.server id="enabletls"/>.
+
 == Login failures now stored in the database
 // https://github.com/keycloak/keycloak/issues/52126
 

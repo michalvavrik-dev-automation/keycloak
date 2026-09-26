@@ -7,9 +7,11 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import org.keycloak.common.Profile;
 import org.keycloak.common.crypto.FipsMode;
+import org.keycloak.common.crypto.PqcMode;
 import org.keycloak.common.util.KeystoreUtil;
 import org.keycloak.config.HttpOptions;
 import org.keycloak.config.ManagementOptions;
@@ -28,6 +30,8 @@ import io.quarkus.runtime.LaunchMode;
 import io.quarkus.runtime.configuration.DurationConverter;
 import io.quarkus.runtime.util.ClassPathUtils;
 import io.smallrye.config.ConfigSourceInterceptorContext;
+import io.vertx.core.net.JdkSSLEngineOptions;
+import io.vertx.core.net.OpenSSLEngineOptions;
 
 import static org.keycloak.quarkus.runtime.configuration.Configuration.getOptionalKcValue;
 import static org.keycloak.quarkus.runtime.configuration.mappers.PropertyMapper.fromFeature;
@@ -39,6 +43,13 @@ public final class HttpPropertyMappers implements PropertyMapperGrouping {
     public static final String TLS_BUCKET = "keycloak-https-server";
     public static final String TLS_PREFIX = "quarkus.tls.\"" + TLS_BUCKET + "\".";
     public static final String QUARKUS_HTTPS_SNI = TLS_PREFIX + "key-store.sni";
+
+    // TLS registry bucket property, see io.quarkus.tls.runtime.config.TlsBucketConfig#pqcEnforcementPolicy()
+    public static final String QUARKUS_PQC_ENFORCEMENT_POLICY = "pqc-enforcement-policy";
+    // values of io.quarkus.tls.runtime.config.PqcEnforcementPolicy the PQC modes are mapped to
+    private static final String QUARKUS_PQC_POLICY_STRICT = "strict";
+    private static final String QUARKUS_PQC_POLICY_RELAXED = "relaxed";
+    private static final String TLS_V1_3 = "TLSv1.3";
 
     private static final Option<String> SYNTHETIC_TLS_CONFIG_NAME = new OptionBuilder<>("https-tls-config-name-hidden", String.class)
             .buildTime(false)
@@ -121,6 +132,11 @@ public final class HttpPropertyMappers implements PropertyMapperGrouping {
                 fromOption(HttpOptions.HTTPS_PROTOCOLS)
                         .to(TLS_PREFIX + "protocols")
                         .paramLabel("protocols")
+                        .build(),
+                fromOption(HttpOptions.PQC_HTTP_IN)
+                        .to(TLS_PREFIX + QUARKUS_PQC_ENFORCEMENT_POLICY)
+                        .transformer(HttpPropertyMappers::toQuarkusPqcEnforcementPolicy)
+                        .paramLabel("mode")
                         .build(),
                 fromOption(HttpOptions.HTTPS_CERTIFICATES_RELOAD_PERIOD)
                         .to(TLS_PREFIX + "reload-period")
@@ -427,6 +443,10 @@ public final class HttpPropertyMappers implements PropertyMapperGrouping {
             if (!enabled && !isHttpsEnabled()) {
                 throw new PropertyException(Messages.httpsConfigurationNotSet());
             }
+            validatePqcMode(HttpOptions.PQC_HTTP_IN, HttpOptions.HTTPS_PROTOCOLS);
+            if (ManagementPropertyMappers.isInheritedScheme()) {
+                validatePqcMode(ManagementOptions.PQC_HTTP_MANAGEMENT, ManagementOptions.HTTPS_MANAGEMENT_PROTOCOLS);
+            }
         }
         if (getOptionalKcValue(HttpOptions.HTTPS_CERTIFICATE_FILE.getKey()).isEmpty()) {
             validateStoreType(HttpOptions.HTTPS_KEY_STORE_FILE, HttpOptions.HTTPS_KEY_STORE_TYPE, StoreRole.KEY_STORE);
@@ -583,6 +603,54 @@ public final class HttpPropertyMappers implements PropertyMapperGrouping {
     static File getDefaultKeystorePathValue() {
         return Environment.getHomeDir().map(f -> Paths.get(f, "conf", "server.keystore").toFile()).filter(File::exists)
                 .orElse(null);
+    }
+
+    /**
+     * Fails fast when the PQC mode cannot be honored, so that users get a clear message instead of a startup failure
+     * of the HTTP server. The checks are only relevant for serving commands as they depend on the Java runtime.
+     */
+    private static void validatePqcMode(Option<PqcMode> modeOption, Option<List<String>> protocolsOption) {
+        String mode = getOptionalKcValue(modeOption.getKey()).orElse(null);
+        if (!PqcMode.ENFORCE_HYBRID.toString().equals(mode)) {
+            return;
+        }
+        if (Profile.isFeatureEnabled(Profile.Feature.FIPS)) {
+            // TLS is handled by the BouncyCastle JSSE provider in FIPS mode, which does not support hybrid key exchange
+            throw new PropertyException("The '%s' PQC mode set by the '%s' option is not supported when the '%s' feature is enabled."
+                    .formatted(mode, modeOption.getKey(), Profile.Feature.FIPS.getKey()));
+        }
+        String protocols = getOptionalKcValue(protocolsOption.getKey()).orElse("");
+        if (Stream.of(protocols.split(",")).map(String::trim).noneMatch(TLS_V1_3::equalsIgnoreCase)) {
+            throw new PropertyException("The '%s' PQC mode set by the '%s' option requires the '%s' protocol to be enabled by the '%s' option."
+                    .formatted(mode, modeOption.getKey(), TLS_V1_3, protocolsOption.getKey()));
+        }
+        if (!isPqcKeyExchangeAvailable()) {
+            throw new PropertyException(("The '%s' PQC mode set by the '%s' option requires a TLS engine supporting hybrid post-quantum key exchange, "
+                    + "which is not available in the current Java runtime. Use OpenJDK 27 or later, or set the option to '%s'.")
+                    .formatted(mode, modeOption.getKey(), PqcMode.OPTIONAL));
+        }
+    }
+
+    /**
+     * Whether the TLS engine is able to negotiate a hybrid post-quantum key exchange. This mirrors the check performed
+     * by Vert.x when a PQC enforcement policy is applied to a server, see {@code io.vertx.core.net.impl.SSLHelper}.
+     */
+    public static boolean isPqcKeyExchangeAvailable() {
+        return JdkSSLEngineOptions.isPqcAvailable() || OpenSSLEngineOptions.isPqcAvailable();
+    }
+
+    static String toQuarkusPqcEnforcementPolicy(String value, ConfigSourceInterceptorContext context) {
+        if (value == null) {
+            return null;
+        }
+        if (PqcMode.ENFORCE_HYBRID.toString().equals(value)) {
+            return QUARKUS_PQC_POLICY_STRICT;
+        }
+        if (PqcMode.OPTIONAL.toString().equals(value)) {
+            return QUARKUS_PQC_POLICY_RELAXED;
+        }
+        // unexpected values are rejected by the option validation, pass them through rather than silently relaxing the policy
+        return value;
     }
 
     static String resolveKeyStoreType(String value,

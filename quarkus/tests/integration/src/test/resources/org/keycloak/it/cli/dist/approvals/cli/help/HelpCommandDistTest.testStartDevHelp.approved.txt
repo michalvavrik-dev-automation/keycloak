@@ -354,6 +354,15 @@ HTTP(S):
                      The type of the trust store file. If not given, the type is automatically
                        detected based on the file extension. If 'fips-mode' is set to 'strict' and
                        no value is set, it defaults to 'BCFKS'.
+--pqc-http-in <mode> Sets the post-quantum cryptography (PQC) mode for incoming HTTPS connections.
+                       If 'optional' is set, a hybrid post-quantum key exchange is negotiated when
+                       both the TLS engine of the server and the client support it, otherwise a
+                       classical key exchange is used. If 'enforce-hybrid' is set, only hybrid
+                       post-quantum key exchange groups such as X25519MLKEM768 are offered and
+                       clients that do not support any of them are rejected. Enforcing PQC requires
+                       TLSv1.3 and a Java runtime whose TLS engine supports hybrid post-quantum key
+                       exchange, such as OpenJDK 27 or later. Possible values are: optional,
+                       enforce-hybrid. Default: optional.
 --shutdown-delay <delay>
                      Length of the pre-shutdown phase during which the server prepares for
                        shutdown. May be an ISO 8601 duration value, an integer number of seconds,
@@ -477,6 +486,13 @@ Management:
                      DEPRECATED. If metrics/health endpoints should be exposed on the main HTTP
                        server (not recommended). If set to true, the management interface is
                        disabled. Default: false.
+--pqc-http-management <mode>
+                     Sets the post-quantum cryptography (PQC) mode for incoming HTTPS connections
+                       to the management interface. See the 'pqc-http-in' option for the available
+                       modes. If not given, the value is inherited from HTTP options. Relevant only
+                       when something is exposed on the management interface - see the guide for
+                       details. Possible values are: optional, enforce-hybrid. Default: optional.
+                       Available only when http-management-scheme is inherited.
 
 Metrics:
 

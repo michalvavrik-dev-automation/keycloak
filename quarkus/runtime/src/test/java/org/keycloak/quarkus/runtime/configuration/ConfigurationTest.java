@@ -1302,4 +1302,27 @@ public class ConfigurationTest extends AbstractConfigurationTest {
         initConfig();
         assertExternalConfig(HttpPropertyMappers.TLS_PREFIX + "key-store.pem.default.password", "env-secret");
     }
+
+    @Test
+    public void testPqcHttpInDefault() {
+        initConfig();
+        assertConfig("pqc-http-in", "optional");
+        assertExternalConfig(HttpPropertyMappers.TLS_PREFIX + "pqc-enforcement-policy", "relaxed");
+    }
+
+    @Test
+    public void testPqcHttpInEnforceHybrid() {
+        ConfigArgsConfigSource.setCliArgs("--pqc-http-in=enforce-hybrid");
+        initConfig();
+        assertConfig("pqc-http-in", "enforce-hybrid");
+        assertExternalConfig(HttpPropertyMappers.TLS_PREFIX + "pqc-enforcement-policy", "strict");
+    }
+
+    @Test
+    public void testPqcHttpInOptionalFromEnv() {
+        putEnvVar("KC_PQC_HTTP_IN", "optional");
+        initConfig();
+        assertConfig("pqc-http-in", "optional");
+        assertExternalConfig(HttpPropertyMappers.TLS_PREFIX + "pqc-enforcement-policy", "relaxed");
+    }
 }

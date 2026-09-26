@@ -40,6 +40,7 @@ import org.keycloak.quarkus.runtime.configuration.mappers.HttpPropertyMappers;
 import org.keycloak.quarkus.runtime.configuration.mappers.ManagementPropertyMappers;
 
 import org.apache.commons.io.FileUtils;
+import org.junit.Assume;
 import org.junit.Ignore;
 import org.junit.Test;
 import picocli.CommandLine;
@@ -2162,4 +2163,54 @@ Environment.setHomeDir(tmp);
         assertTrue(nonRunningPicocli.getErrString().contains("Did you mean: kc.sh start or kc.sh start-dev or kc.sh bootstrap-admin?"));
     }
 
+    @Test
+    public void testPqcModeInvalidValue() {
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("start-dev", "--pqc-http-in=strict");
+        assertError(nonRunningPicocli, "Invalid value for option '--pqc-http-in': strict. Expected values are: optional, enforce-hybrid");
+
+        onAfter();
+        nonRunningPicocli = pseudoLaunch("start-dev", "--pqc-http-management=client-negotiated");
+        assertError(nonRunningPicocli, "Invalid value for option '--pqc-http-management': client-negotiated. Expected values are: optional, enforce-hybrid");
+    }
+
+    @Test
+    public void testPqcModeEnforceHybridRequiresTlsV13() {
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("start-dev", "--pqc-http-in=enforce-hybrid", "--https-protocols=TLSv1.2");
+        assertError(nonRunningPicocli, "The 'enforce-hybrid' PQC mode set by the 'pqc-http-in' option requires the 'TLSv1.3' protocol to be enabled by the 'https-protocols' option.");
+
+        onAfter();
+        nonRunningPicocli = pseudoLaunch("start-dev", "--pqc-http-management=enforce-hybrid", "--https-management-protocols=TLSv1.2");
+        assertError(nonRunningPicocli, "The 'enforce-hybrid' PQC mode set by the 'pqc-http-management' option requires the 'TLSv1.3' protocol to be enabled by the 'https-management-protocols' option.");
+    }
+
+    @Test
+    public void testPqcModeEnforceHybridNotSupportedInFipsMode() {
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("start-dev", "--features=fips", "--pqc-http-in=enforce-hybrid");
+        assertError(nonRunningPicocli, "The 'enforce-hybrid' PQC mode set by the 'pqc-http-in' option is not supported when the 'fips' feature is enabled.");
+    }
+
+    @Test
+    public void testPqcModeEnforceHybridRequiresPqcCapableRuntime() {
+        Assume.assumeFalse("The Java runtime supports hybrid post-quantum key exchange", HttpPropertyMappers.isPqcKeyExchangeAvailable());
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("start-dev", "--pqc-http-in=enforce-hybrid");
+        assertError(nonRunningPicocli, "The 'enforce-hybrid' PQC mode set by the 'pqc-http-in' option requires a TLS engine supporting hybrid post-quantum key exchange, which is not available in the current Java runtime. Use OpenJDK 27 or later, or set the option to 'optional'.");
+
+        onAfter();
+        nonRunningPicocli = pseudoLaunch("start-dev", "--pqc-http-management=enforce-hybrid");
+        assertError(nonRunningPicocli, "The 'enforce-hybrid' PQC mode set by the 'pqc-http-management' option requires a TLS engine supporting hybrid post-quantum key exchange");
+
+        onAfter();
+        // not validated for commands that do not start the server
+        nonRunningPicocli = pseudoLaunch("build", "--pqc-http-in=enforce-hybrid");
+        assertThat(nonRunningPicocli.getErrString(), not(containsString("PQC mode")));
+    }
+
+    @Test
+    public void testPqcModeEnforceHybridOnPqcCapableRuntime() {
+        Assume.assumeTrue("The Java runtime does not support hybrid post-quantum key exchange", HttpPropertyMappers.isPqcKeyExchangeAvailable());
+        NonRunningPicocli nonRunningPicocli = pseudoLaunch("start-dev", "--pqc-http-in=enforce-hybrid");
+        assertNoError(nonRunningPicocli);
+        assertEquals("strict", nonRunningPicocli.config.getConfigValue(HttpPropertyMappers.TLS_PREFIX + "pqc-enforcement-policy").getValue());
+        assertEquals("strict", nonRunningPicocli.config.getConfigValue(ManagementPropertyMappers.MGMT_TLS_PREFIX + "pqc-enforcement-policy").getValue());
+    }
 }

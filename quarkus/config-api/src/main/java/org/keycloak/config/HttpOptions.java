@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 
 import org.keycloak.common.crypto.FipsMode;
+import org.keycloak.common.crypto.PqcMode;
 
 import static org.keycloak.config.OptionsUtil.DURATION_DESCRIPTION;
 
@@ -71,6 +72,15 @@ public class HttpOptions {
             .expectedValues(Arrays.asList("TLSv1.3", "TLSv1.2"))
             .strictExpectedValues(false)
             .defaultValue(Arrays.asList("TLSv1.3", "TLSv1.2"))
+            .build();
+
+    public static final Option<PqcMode> PQC_HTTP_IN = new OptionBuilder<>("pqc-http-in", PqcMode.class)
+            .category(OptionCategory.HTTP)
+            .description("Sets the post-quantum cryptography (PQC) mode for incoming HTTPS connections. "
+                    + "If '" + PqcMode.OPTIONAL + "' is set, a hybrid post-quantum key exchange is negotiated when both the TLS engine of the server and the client support it, otherwise a classical key exchange is used. "
+                    + "If '" + PqcMode.ENFORCE_HYBRID + "' is set, only hybrid post-quantum key exchange groups such as X25519MLKEM768 are offered and clients that do not support any of them are rejected. "
+                    + "Enforcing PQC requires TLSv1.3 and a Java runtime whose TLS engine supports hybrid post-quantum key exchange, such as OpenJDK 27 or later.")
+            .defaultValue(PqcMode.OPTIONAL)
             .build();
 
     public static final Option<String> HTTPS_CERTIFICATES_RELOAD_PERIOD = new OptionBuilder<>("https-certificates-reload-period", String.class)

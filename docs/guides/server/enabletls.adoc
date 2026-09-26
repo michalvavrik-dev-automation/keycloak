@@ -82,10 +82,30 @@ For example to only enable TLSv1.3, use a command such as the following: `kc.sh 
 By default {project_name} will reload the certificates, keys, and keystores specified in `+https-*+` options every hour. For environments where your server keys may need frequent rotation, this allows that to happen without a server restart. You may override the default via the `https-certificates-reload-period` option. Interval on which to reload key store, trust store, and certificate files referenced by `+https-*+` options.
 The value may be a java.time.Duration value, an integer number of seconds, or an integer followed by one of the time units [`ms`, `h`, `m`, `s`, `d`]. Must be greater than 30 seconds. Use `-1` to disable.
 
-<@opts.printRelevantOptions includedOptions="https-* http-enabled" excludedOptions="https-trust-store-* https-client-auth https-management-* https-management-client-auth">
+== Post-quantum cryptography
+{project_name} negotiates a hybrid post-quantum key exchange, such as `X25519MLKEM768`, for incoming TLS 1.3 connections whenever the Java runtime and the client support it.
+This is the behavior of the default `optional` mode of the `pqc-http-in` option, and clients that do not support post-quantum cryptography continue to use a classical key exchange.
+
+To reject clients that are not capable of a hybrid post-quantum key exchange, set the `pqc-http-in` option to `enforce-hybrid`:
+
+<@kc.start parameters="--pqc-http-in=enforce-hybrid"/>
+
+In this mode, only the hybrid post-quantum key exchange groups `X25519MLKEM768`, `SecP256r1MLKEM768`, and `SecP384r1MLKEM1024` are offered during the TLS handshake, so clients that support only a classical key exchange fail to connect.
+Enforcing post-quantum cryptography has the following requirements:
+
+* A Java runtime whose TLS engine supports hybrid post-quantum key exchange, such as OpenJDK 27 or later. {project_name} refuses to start when the Java runtime does not support it.
+* TLS 1.3 enabled by the `https-protocols` option, which is the default.
+* The `fips` feature disabled, as the TLS provider used in FIPS mode does not support post-quantum key exchange.
+
+The management interface inherits the mode from the `pqc-http-in` option.
+To configure a different mode for the management interface, use the `pqc-http-management` option, for details see <@links.server id="management-interface" />.
+
+NOTE: A post-quantum key exchange increases the size of the TLS handshake, and some network appliances are known to drop the larger `ClientHello` messages. Verify that your infrastructure supports post-quantum key exchange before enforcing it.
+
+<@opts.printRelevantOptions includedOptions="https-* http-enabled pqc-http-in" excludedOptions="https-trust-store-* https-client-auth https-management-* https-management-client-auth">
 
 === Management server
-<@opts.includeOptions includedOptions="https-management-*" excludedOptions="https-management-client-auth"/>
+<@opts.includeOptions includedOptions="https-management-* pqc-http-management" excludedOptions="https-management-client-auth"/>
 
 </@opts.printRelevantOptions>
 

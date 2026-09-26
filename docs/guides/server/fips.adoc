@@ -192,6 +192,9 @@ For Kerberos/SPNEGO, the security provider `SunJGSS` is not yet fully FIPS compl
 if you want to be FIPS compliant. The `KERBEROS` feature is disabled by default in {project_name} when it is executed on FIPS platform and when security provider is not
 available. Details are in the https://bugzilla.redhat.com/show_bug.cgi?id=2051628[bugzilla].
 
+Enforcing post-quantum cryptography for incoming HTTPS connections by setting the `pqc-http-in` or `pqc-http-management` option to `enforce-hybrid` is not supported in FIPS mode,
+as the BouncyCastle JSSE provider does not support a hybrid post-quantum key exchange. For details, see <@links.server id="enabletls" />.
+
 == Run the CLI on the FIPS host
 
 If you want to run Client Registration CLI (`kcreg.sh|bat` script) or Admin CLI (`kcadm.sh|bat` script),

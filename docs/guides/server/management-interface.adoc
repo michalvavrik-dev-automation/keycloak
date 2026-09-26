@@ -5,7 +5,7 @@
 <@tmpl.guide
 title="Configuring the Management Interface"
 summary="Configure {project_name}'s management interface for endpoints such as metrics and health checks."
-includedOptions="http-management-* https-management-* legacy-observability-interface">
+includedOptions="http-management-* https-management-* pqc-http-management legacy-observability-interface">
 
 The management interface allows accessing management endpoints via a different HTTP server than the primary one.
 It provides the possibility to hide endpoints like `/metrics` or `/health` from the outside world and, therefore, hardens the security.
@@ -43,6 +43,8 @@ NOTE: If you do not want the management interface to use HTTPS, you may set the 
 
 Specific {project_name} management interface options with the prefix `https-management-*` were provided for setting different TLS parameters for the management HTTP server. Their function is similar to their counterparts for the main HTTP server, for details see <@links.server id="enabletls" />.
 When these options are not explicitly set, the TLS parameters are inherited from the default HTTP server.
+
+The post-quantum cryptography mode is inherited from the `pqc-http-in` option in the same way, and can be set for the management interface specifically with the `pqc-http-management` option.
 
 === Disable Management interface
 

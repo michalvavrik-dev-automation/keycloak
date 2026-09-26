@@ -314,6 +314,26 @@ jobs:
 
           ./mvnw test -pl quarkus/tests/integration ${PARAMS["${{ matrix.suite }}"]} 2>&1 | misc/log/trimmer.sh
 
+  quarkus-pqc-integration-tests:
+    name: Quarkus PQC IT
+    needs: [build, conditional]
+    if: needs.conditional.outputs.ci-quarkus == 'true'
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Negotiating a hybrid post-quantum key exchange with the JDK TLS engine requires OpenJDK 27 (JEP 527)
+      - id: integration-test-setup
+        name: Integration test setup
+        uses: ./.github/actions/integration-test-setup
+        with:
+          jdk-version: "27"
+
+      - name: Run Quarkus PQC integration tests
+        run: |
+          ./mvnw test -pl quarkus/tests/integration -Dtest=PqcDistTest 2>&1 | misc/log/trimmer.sh
+
   jdk-integration-tests:
     name: Java Distribution IT/UT
     needs: build
@@ -1385,6 +1405,7 @@ jobs:
       - adapter-integration-tests-strict-cookies
       - quarkus-unit-tests
       - quarkus-integration-tests
+      - quarkus-pqc-integration-tests
       - jdk-integration-tests
       - store-integration-tests
       - volatile-sessions-tests

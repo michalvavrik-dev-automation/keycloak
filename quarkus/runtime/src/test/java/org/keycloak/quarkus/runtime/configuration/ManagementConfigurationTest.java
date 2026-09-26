@@ -774,4 +774,80 @@ public class ManagementConfigurationTest extends AbstractConfigurationTest {
         ));
         assertExternalConfigNull(ManagementPropertyMappers.MGMT_TLS_PREFIX + "key-store.p12.path");
     }
+
+    @Test
+    public void managementPqcModeDefault() {
+        makeInterfaceOccupied();
+        initConfig();
+        assertConfig(Map.of(
+                "pqc-http-in", "optional",
+                "pqc-http-management", "optional"
+        ));
+        assertExternalConfig(Map.of(
+                HttpPropertyMappers.TLS_PREFIX + "pqc-enforcement-policy", "relaxed",
+                ManagementPropertyMappers.MGMT_TLS_PREFIX + "pqc-enforcement-policy", "relaxed"
+        ));
+    }
+
+    @Test
+    public void managementPqcModeInherited() {
+        makeInterfaceOccupied();
+        putEnvVar("KC_PQC_HTTP_IN", "enforce-hybrid");
+        initConfig();
+        assertConfig(Map.of(
+                "pqc-http-in", "enforce-hybrid",
+                "pqc-http-management", "enforce-hybrid"
+        ));
+        assertExternalConfig(Map.of(
+                HttpPropertyMappers.TLS_PREFIX + "pqc-enforcement-policy", "strict",
+                ManagementPropertyMappers.MGMT_TLS_PREFIX + "pqc-enforcement-policy", "strict"
+        ));
+    }
+
+    @Test
+    public void managementPqcModeOverridesInheritedValue() {
+        makeInterfaceOccupied();
+        putEnvVars(Map.of(
+                "KC_PQC_HTTP_IN", "enforce-hybrid",
+                "KC_PQC_HTTP_MANAGEMENT", "optional"
+        ));
+        initConfig();
+        assertConfig(Map.of(
+                "pqc-http-in", "enforce-hybrid",
+                "pqc-http-management", "optional"
+        ));
+        assertExternalConfig(Map.of(
+                HttpPropertyMappers.TLS_PREFIX + "pqc-enforcement-policy", "strict",
+                ManagementPropertyMappers.MGMT_TLS_PREFIX + "pqc-enforcement-policy", "relaxed"
+        ));
+    }
+
+    @Test
+    public void managementPqcModeEnforcedOnlyForManagement() {
+        makeInterfaceOccupied();
+        putEnvVar("KC_PQC_HTTP_MANAGEMENT", "enforce-hybrid");
+        initConfig();
+        assertConfig(Map.of(
+                "pqc-http-in", "optional",
+                "pqc-http-management", "enforce-hybrid"
+        ));
+        assertExternalConfig(Map.of(
+                HttpPropertyMappers.TLS_PREFIX + "pqc-enforcement-policy", "relaxed",
+                ManagementPropertyMappers.MGMT_TLS_PREFIX + "pqc-enforcement-policy", "strict"
+        ));
+    }
+
+    @Test
+    public void managementPqcModeDisabledForHttpScheme() {
+        makeInterfaceOccupied();
+        putEnvVars(Map.of(
+                "KC_PQC_HTTP_IN", "enforce-hybrid",
+                "KC_HTTP_MANAGEMENT_SCHEME", "http"
+        ));
+        initConfig();
+        PropertyMappers.sanitizeDisabledMappers(new Build());
+        assertConfig("pqc-http-in", "enforce-hybrid");
+        assertExternalConfig(HttpPropertyMappers.TLS_PREFIX + "pqc-enforcement-policy", "strict");
+        assertExternalConfigNull(ManagementPropertyMappers.MGMT_TLS_PREFIX + "pqc-enforcement-policy");
+    }
 }
