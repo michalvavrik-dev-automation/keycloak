@@ -85,8 +85,7 @@ resource is not returned. This has the following consequences:
 Use `not (attribute pr)` to find those resources.
 * For a multi-valued attribute, `attribute ne "value"` returns only resources that have at least one other value.
 `not (attribute eq "value")` also returns resources without any value.
-* `attribute eq null` and `attribute ne null` never match. The `null` literal is accepted only with `eq` and `ne`;
-any other operator returns a `400 Bad Request` response with `scimType: "invalidFilter"`.
+* `attribute eq null` and `attribute ne null` never match. The `null` literal is accepted only with `eq` and `ne`.
 
 == Logical operators
 
