@@ -67,9 +67,10 @@ The `gt`, `ge`, `lt`, and `le` operators supported by the SCIM API are not avail
 
 === Fields without a value
 
-A comparison with a field that has no value is never true.
-For example, `auth.method ne "client-secret"` does not return SAML clients or public clients, because they have no authentication method. Use `not auth.method pr` to find them.
-`description eq null` never matches either, and `null` is accepted only with `eq` and `ne`.
+A comparison with a field that has no value is never true, and for every searchable field except `roles` the negated comparison is not true either.
+For example, neither `auth.method ne "client-secret"` nor `not (auth.method eq "client-secret")` returns SAML clients or public clients, because they have no authentication method. Use `not auth.method pr` to find them.
+The `roles` field is stored as separate values: `roles ne "admin"` does not return clients without roles, but `not (roles eq "admin")` does, as described in <<Collection field matching>>.
+`description eq null` never matches, and `null` is accepted only with `eq` and `ne`.
 For details, see link:{adminguide_link}#_scim_filtering_null_values[Attributes without a value] in the {adminguide_name}.
 
 === Queryable fields

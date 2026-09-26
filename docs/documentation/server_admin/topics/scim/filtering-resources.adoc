@@ -78,14 +78,42 @@ or boolean attributes. Invalid operator/type combinations return a `400 Bad Requ
 [[_scim_filtering_null_values]]
 == Attributes without a value
 
-Filters are evaluated in the database, where a comparison with a missing value is neither true nor false, and the
-resource is not returned. This has the following consequences:
+Filters are evaluated in the database, and whether a resource whose attribute has no value is returned depends on how
+{project_name} stores the attribute:
 
-* `attribute ne "value"` and `not (attribute eq "value")` do not return resources where the attribute has no value.
-Use `not (attribute pr)` to find those resources.
-* For a multi-valued attribute, `attribute ne "value"` returns only resources that have at least one other value.
-`not (attribute eq "value")` also returns resources without any value.
-* `attribute eq null` and `attribute ne null` never match. The `null` literal is accepted only with `eq` and `ne`.
+* *Stored with the resource.* For users, these are `userName`, `name.givenName`, `name.familyName`, `emails`,
+`active`, `meta.created`, and `meta.lastModified`. For groups, these are `displayName`, `meta.created`, and
+`meta.lastModified`. A comparison with a missing value is neither true nor false, so neither the comparison nor its
+negation returns the resource.
+* *Stored as separate values.* These are all other attributes, including the remaining core attributes such as
+`title` or `externalId`, extension and custom attributes, `groups.value`, and `members.value`. A comparison is true
+only when a matching value exists, so `ne` does not return a resource without a value, but a negated `eq` does. For a
+multi-valued attribute, `ne` returns the resources that have at least one other value.
+
+The following table shows whether a resource without a value for `attribute` is returned:
+
+[cols="2,1,1",options="header"]
+|===
+| Filter | Stored with the resource | Stored as separate values
+
+| `attribute ne "value"`
+| Not returned
+| Not returned
+
+| `not (attribute eq "value")`
+| Not returned
+| Returned
+
+| `not (attribute pr)`
+| Returned
+| Returned
+
+| `attribute eq null` or `attribute ne null`
+| Never matches
+| Never matches
+|===
+
+The `null` literal is accepted only with `eq` and `ne`.
 
 == Logical operators
 
