@@ -50,6 +50,7 @@ import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.protocol.oidc.OIDCAdvancedConfigWrapper;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.saml.SamlProtocol;
+import org.keycloak.representations.idm.AuthenticationFlowRepresentation;
 import org.keycloak.representations.idm.ClientInitialAccessCreatePresentation;
 import org.keycloak.representations.idm.ClientInitialAccessPresentation;
 import org.keycloak.representations.idm.ClientRepresentation;
@@ -261,21 +262,229 @@ public class ClientRegistrationTest extends AbstractClientRegistrationTest {
 
     @Test
     @DatabaseTest
-    public void clientWithDefaultRoles() throws ClientRegistrationException {
+    public void clientWithDefaultRolesRequiresManageRealm() throws ClientRegistrationException {
         authCreateClients();
+        ClientRepresentation client = buildClient();
+        client.setDefaultRoles(new String[]{"test-default-role"});
+
+        ClientRepresentation createdClient = registerClient(client, true);
+        assertNoDefaultRoles(createdClient, "test-default-role");
+
+        authManageClients();
+        ClientRepresentation obtainedClient = reg.get(CLIENT_ID);
+        assertNoDefaultRoles(obtainedClient, "test-default-role");
+
+        client.setDefaultRoles(new String[]{"test-default-role1", "test-default-role2"});
+        ClientRepresentation updatedClient = reg.update(client);
+        assertNoDefaultRoles(updatedClient, "test-default-role1", "test-default-role2");
+    }
+
+    @Test
+    @DatabaseTest
+    public void clientWithDefaultRolesAllowedForManageRealm() throws ClientRegistrationException {
+        authManageRealm();
         ClientRepresentation client = buildClient();
         client.setDefaultRoles(new String[]{"test-default-role"});
 
         ClientRepresentation createdClient = registerClient(client, true);
         assertThat(createdClient.getDefaultRoles(), Matchers.arrayContaining("test-default-role"));
 
-        authManageClients();
         ClientRepresentation obtainedClient = reg.get(CLIENT_ID);
         assertThat(obtainedClient.getDefaultRoles(), Matchers.arrayContaining("test-default-role"));
 
-        client.setDefaultRoles(new String[]{"test-default-role1","test-default-role2"});
+        client.setDefaultRoles(new String[]{"test-default-role1", "test-default-role2"});
         ClientRepresentation updatedClient = reg.update(client);
-        assertThat(updatedClient.getDefaultRoles(), Matchers.arrayContainingInAnyOrder("test-default-role1","test-default-role2"));
+        assertThat(updatedClient.getDefaultRoles(), Matchers.arrayContainingInAnyOrder("test-default-role1", "test-default-role2"));
+    }
+
+    @Test
+    @DatabaseTest
+    public void initialAccessTokenCannotSetDefaultRoles() throws ClientRegistrationException {
+        reg.auth(Auth.token(createInitialAccessToken()));
+
+        ClientRepresentation client = buildClient();
+        client.setDefaultRoles(new String[]{"injected-default-role"});
+        ClientRepresentation createdClient = registerClient(client, true);
+        assertNoDefaultRoles(createdClient, "injected-default-role");
+
+        createdClient.setDefaultRoles(new String[]{"injected-via-rat"});
+        reg.auth(Auth.token(createdClient.getRegistrationAccessToken()));
+        ClientRepresentation updatedClient = reg.update(createdClient);
+        assertNoDefaultRoles(updatedClient, "injected-via-rat");
+    }
+
+    @Test
+    @DatabaseTest
+    public void defaultRolesAddedByAdminCannotBeRemovedWithoutManageRealm() throws ClientRegistrationException {
+        reg.auth(Auth.token(createInitialAccessToken()));
+        ClientRepresentation createdClient = registerClient(buildClient(), true);
+
+        // Administrator adds a role of the client to the realm default roles
+        String adminDefaultRole = "admin-added-default-role";
+        addClientRoleToRealmDefaultRoles(createdClient.getId(), adminDefaultRole);
+
+        // Registration access token can neither add another role nor remove the one added by the administrator
+        reg.auth(Auth.token(createdClient.getRegistrationAccessToken()));
+        ClientRepresentation update = reg.get(CLIENT_ID);
+        assertThat(update.getDefaultRoles(), Matchers.arrayContaining(adminDefaultRole));
+        update.setDefaultRoles(new String[]{adminDefaultRole, "injected-via-rat"});
+        ClientRepresentation updatedClient = reg.update(update);
+        assertThat(updatedClient.getDefaultRoles(), Matchers.arrayContaining(adminDefaultRole));
+        assertNoDefaultRoles(updatedClient, "injected-via-rat");
+
+        reg.auth(Auth.token(updatedClient.getRegistrationAccessToken()));
+        update = reg.get(CLIENT_ID);
+        update.setDefaultRoles(new String[0]);
+        updatedClient = reg.update(update);
+        assertThat(updatedClient.getDefaultRoles(), Matchers.arrayContaining(adminDefaultRole));
+
+        // Neither can an administrator with the manage-clients role only
+        authManageClients();
+        update = reg.get(CLIENT_ID);
+        update.setDefaultRoles(new String[0]);
+        updatedClient = reg.update(update);
+        assertThat(updatedClient.getDefaultRoles(), Matchers.arrayContaining(adminDefaultRole));
+        assertThat(getRealmDefaultRoleComposites(), Matchers.hasItem(adminDefaultRole));
+
+        // An administrator with the manage-realm role can
+        authManageRealm();
+        update = reg.get(CLIENT_ID);
+        update.setDefaultRoles(new String[0]);
+        updatedClient = reg.update(update);
+        assertThat(updatedClient.getDefaultRoles(), Matchers.emptyArray());
+        assertThat(getRealmDefaultRoleComposites(), Matchers.not(Matchers.hasItem(adminDefaultRole)));
+    }
+
+    @Test
+    @DatabaseTest
+    public void authenticationFlowOverridesCannotBeChangedWithRegistrationTokens() throws ClientRegistrationException {
+        String browserFlowId = findFlowId("browser");
+        String directGrantFlowId = findFlowId("direct grant");
+
+        // Initial access token cannot bind the new client to a flow
+        reg.auth(Auth.token(createInitialAccessToken()));
+        ClientRepresentation client = buildClient();
+        client.setAuthenticationFlowBindingOverrides(Map.of("browser", directGrantFlowId));
+        ClientRepresentation createdClient = registerClient(client, true);
+        assertNoAuthenticationFlowOverrides(createdClient);
+
+        // Administrator binds the client to the browser flow
+        ClientRepresentation adminRep = managedRealm.admin().clients().get(createdClient.getId()).toRepresentation();
+        adminRep.setAuthenticationFlowBindingOverrides(Map.of("browser", browserFlowId));
+        managedRealm.admin().clients().get(createdClient.getId()).update(adminRep);
+
+        // Registration access token can neither clear the binding ...
+        reg.auth(Auth.token(createdClient.getRegistrationAccessToken()));
+        ClientRepresentation update = reg.get(CLIENT_ID);
+        assertEquals(Map.of("browser", browserFlowId), update.getAuthenticationFlowBindingOverrides());
+        update.setAuthenticationFlowBindingOverrides(Map.of("browser", ""));
+        ClientRepresentation updatedClient = reg.update(update);
+        assertEquals(Map.of("browser", browserFlowId), updatedClient.getAuthenticationFlowBindingOverrides());
+
+        // ... nor change it or add another one
+        reg.auth(Auth.token(updatedClient.getRegistrationAccessToken()));
+        update = reg.get(CLIENT_ID);
+        update.setAuthenticationFlowBindingOverrides(Map.of("browser", directGrantFlowId, "direct_grant", directGrantFlowId));
+        updatedClient = reg.update(update);
+        assertEquals(Map.of("browser", browserFlowId), updatedClient.getAuthenticationFlowBindingOverrides());
+
+        // Sending the representation back unchanged is fine
+        reg.auth(Auth.token(updatedClient.getRegistrationAccessToken()));
+        update = reg.get(CLIENT_ID);
+        updatedClient = reg.update(update);
+        assertEquals(Map.of("browser", browserFlowId), updatedClient.getAuthenticationFlowBindingOverrides());
+
+        assertEquals(Map.of("browser", browserFlowId),
+                managedRealm.admin().clients().get(createdClient.getId()).toRepresentation().getAuthenticationFlowBindingOverrides());
+    }
+
+    @Test
+    @DatabaseTest
+    public void fullScopeAllowedCannotBeEnabledWithRegistrationAccessToken() throws ClientRegistrationException {
+        reg.auth(Auth.token(createInitialAccessToken()));
+        ClientRepresentation createdClient = registerClient(buildClient(), true);
+
+        // Administrator disables full scope allowed
+        ClientRepresentation adminRep = managedRealm.admin().clients().get(createdClient.getId()).toRepresentation();
+        adminRep.setFullScopeAllowed(false);
+        managedRealm.admin().clients().get(createdClient.getId()).update(adminRep);
+
+        // Registration access token cannot enable it again
+        reg.auth(Auth.token(createdClient.getRegistrationAccessToken()));
+        ClientRepresentation update = reg.get(CLIENT_ID);
+        assertFalse(update.isFullScopeAllowed());
+        update.setFullScopeAllowed(true);
+        assertUpdateRejected(update, "Full scope allowed cannot be enabled");
+        assertFalse(managedRealm.admin().clients().get(createdClient.getId()).toRepresentation().isFullScopeAllowed());
+
+        // Sending the unchanged value or omitting it is fine
+        update.setFullScopeAllowed(false);
+        ClientRepresentation updatedClient = reg.update(update);
+        assertFalse(updatedClient.isFullScopeAllowed());
+
+        reg.auth(Auth.token(updatedClient.getRegistrationAccessToken()));
+        update = reg.get(CLIENT_ID);
+        update.setFullScopeAllowed(null);
+        updatedClient = reg.update(update);
+        assertFalse(updatedClient.isFullScopeAllowed());
+        assertFalse(managedRealm.admin().clients().get(createdClient.getId()).toRepresentation().isFullScopeAllowed());
+    }
+
+    private String createInitialAccessToken() {
+        ClientInitialAccessCreatePresentation request = new ClientInitialAccessCreatePresentation();
+        request.setCount(1);
+        request.setExpiration(10000);
+        ClientInitialAccessPresentation iat = managedRealm.admin().clientInitialAccess().create(request);
+        return iat.getToken();
+    }
+
+    private void addClientRoleToRealmDefaultRoles(String clientUuid, String roleName) {
+        managedRealm.admin().clients().get(clientUuid).roles().create(new RoleRepresentation(roleName, null, false));
+        RoleRepresentation role = managedRealm.admin().clients().get(clientUuid).roles().get(roleName).toRepresentation();
+        String defaultRoleId = managedRealm.admin().toRepresentation().getDefaultRole().getId();
+        managedRealm.admin().rolesById().addComposites(defaultRoleId, List.of(role));
+        assertThat(getRealmDefaultRoleComposites(), Matchers.hasItem(roleName));
+    }
+
+    private Set<String> getRealmDefaultRoleComposites() {
+        String defaultRoleId = managedRealm.admin().toRepresentation().getDefaultRole().getId();
+        return managedRealm.admin().rolesById().getRoleComposites(defaultRoleId)
+                .stream().map(RoleRepresentation::getName).collect(Collectors.toSet());
+    }
+
+    private void assertNoDefaultRoles(ClientRepresentation client, String... roleNames) {
+        List<String> defaultRoles = client.getDefaultRoles() != null ? Arrays.asList(client.getDefaultRoles()) : Collections.emptyList();
+        Set<String> composites = getRealmDefaultRoleComposites();
+        // hasItems(a, b) is only satisfied when all names are present, so its negation would pass if just one of them
+        // is missing. Assert the absence of each name individually instead.
+        for (String roleName : roleNames) {
+            assertThat(defaultRoles, Matchers.not(Matchers.hasItem(roleName)));
+            assertThat(composites, Matchers.not(Matchers.hasItem(roleName)));
+        }
+    }
+
+    private void assertNoAuthenticationFlowOverrides(ClientRepresentation client) {
+        if (client.getAuthenticationFlowBindingOverrides() != null) {
+            assertThat(client.getAuthenticationFlowBindingOverrides(), Matchers.anEmptyMap());
+        }
+    }
+
+    private String findFlowId(String alias) {
+        return managedRealm.admin().flows().getFlows().stream()
+                .filter(flow -> alias.equals(flow.getAlias()))
+                .map(AuthenticationFlowRepresentation::getId)
+                .findFirst().orElseThrow();
+    }
+
+    private void assertUpdateRejected(ClientRepresentation client, String expectedErrorDescription) {
+        try {
+            reg.update(client);
+            fail("Expected the update to be rejected");
+        } catch (ClientRegistrationException e) {
+            HttpErrorException cause = (HttpErrorException) e.getCause();
+            assertThat(cause.getStatusLine().getStatusCode(), is(400));
+            assertThat(cause.getErrorResponse(), CoreMatchers.containsString(expectedErrorDescription));
+        }
     }
 
     @Test

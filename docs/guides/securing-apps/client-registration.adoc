@@ -34,6 +34,7 @@ The bearer token can be issued on behalf of a user or a Service Account. The fol
 * create-client or manage-client - To create clients
 * view-client or manage-client - To view clients
 * manage-client - To update or delete client
+* manage-realm - To additionally set the deprecated `defaultRoles` field of the {project_name} client representation, which adds roles of the client to the realm default roles. Without this role the field is ignored when a client is created or updated.
 
 If you are using a bearer token to create clients it's recommend to use a token from a Service Account with only the `create-client` role (see link:{adminguide_link}[{adminguide_name}] for more details).
 
@@ -67,6 +68,8 @@ Authorization: bearer eyJhbGciOiJSUz...
 When you create a client through the Client Registration Service the response will include a registration access token.
 The registration access token provides access to retrieve the client configuration later, but also to update or delete the client.
 The registration access token is included with the request in the same way as a bearer token or initial access token.
+
+Initial access tokens and registration access tokens cannot change settings of a client that are reserved for administrators. The `defaultRoles` and `authenticationFlowBindingOverrides` fields of the {project_name} client representation are ignored, and a request that enables `fullScopeAllowed` on a client where it is disabled is rejected. Use a bearer token with the corresponding role, or the Admin REST API, to change these settings.
 
 By default, registration access token rotation is enabled. This means a registration access token is only valid once. When the token is used, the response will include a new token. Note that registration access token rotation can be disabled by using link:{adminguide_link}#_client_policies[Client Policies].
 

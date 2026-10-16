@@ -38,6 +38,7 @@ import org.keycloak.common.Profile;
 import org.keycloak.events.Details;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
+import org.keycloak.models.AdminRoles;
 import org.keycloak.models.ClientInitialAccessModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientRegistrationAccessTokenConstants;
@@ -66,10 +67,14 @@ import org.keycloak.services.managers.RealmManager;
 import org.keycloak.services.resources.admin.ClientResource;
 import org.keycloak.validation.ValidationUtil;
 
+import org.jboss.logging.Logger;
+
 /**
  * @author <a href="mailto:sthorger@redhat.com">Stian Thorgersen</a>
  */
 public abstract class AbstractClientRegistrationProvider implements ClientRegistrationProvider {
+
+    private static final Logger logger = Logger.getLogger(AbstractClientRegistrationProvider.class);
 
     protected KeycloakSession session;
     protected EventBuilder event;
@@ -111,8 +116,12 @@ public abstract class AbstractClientRegistrationProvider implements ClientRegist
             ClientModel clientModel = ClientManager.createClient(session, realm, client);
 
             if (client.getDefaultRoles() != null) {
-                for (String name : client.getDefaultRoles()) {
-                    addDefaultRole(clientModel, name);
+                if (auth.canManageRealmDefaultRoles()) {
+                    for (String name : client.getDefaultRoles()) {
+                        addDefaultRole(clientModel, name);
+                    }
+                } else {
+                    logIgnoredDefaultRoles(client);
                 }
             }
 
@@ -232,6 +241,18 @@ public abstract class AbstractClientRegistrationProvider implements ClientRegist
                     Response.Status.BAD_REQUEST
             );
         }
+        // Enabling full scope puts all roles of the user into the tokens issued to this client. The Admin REST API
+        // requires the manage permission on the client for this, so a registration access token must not undo
+        // an administrator who disabled it. Disabling it (or sending the unchanged value back) is fine.
+        if (auth.isRegistrationAccessToken()
+                && Boolean.TRUE.equals(rep.isFullScopeAllowed())
+                && !client.isFullScopeAllowed()) {
+            throw new ErrorResponseException(
+                    ErrorCodes.INVALID_CLIENT_METADATA,
+                    "Full scope allowed cannot be enabled via registration access token",
+                    Response.Status.BAD_REQUEST
+            );
+        }
         ClientResource.updateClientServiceAccount(session, client, rep.isServiceAccountsEnabled());
 
         try {
@@ -253,7 +274,11 @@ public abstract class AbstractClientRegistrationProvider implements ClientRegist
         RepresentationToModel.updateClientScopes(rep, client);
 
         if (rep.getDefaultRoles() != null) {
-            updateDefaultRoles(client, rep.getDefaultRoles());
+            if (auth.canManageRealmDefaultRoles()) {
+                updateDefaultRoles(client, rep.getDefaultRoles());
+            } else {
+                logIgnoredDefaultRoles(rep);
+            }
         }
 
         rep = ModelToRepresentation.toRepresentation(client, session);
@@ -401,19 +426,30 @@ public abstract class AbstractClientRegistrationProvider implements ClientRegist
     }
 
     /**
-     * Strips privileged {@code ssf.*} attributes from non-Admin representations.
+     * Strips settings reserved for the Admin API from representations sent by non-Admin DCR callers (IAT/RAT):
+     * <ul>
+     * <li>privileged {@code ssf.*} attributes,</li>
+     * <li>{@code authenticationFlowBindingOverrides}, which bind the client to a different authentication flow of the
+     * realm and could be used to bypass the authentication the realm administrator configured.</li>
+     * </ul>
      *
-     * <p>Reserved for the Admin API; silently removed for DCR callers (IAT/RAT)
-     * without throwing an error.
+     * <p>The settings are silently removed without throwing an error, so that a representation obtained by a GET
+     * request can be sent back unchanged.
      */
     private void stripPrivilegedAttributes(ClientRepresentation rep) {
         if (auth.isBearerToken()) {
             return; // Admin callers retain full write access
         }
+        rep.setAuthenticationFlowBindingOverrides(null);
         if (rep.getAttributes() == null || rep.getAttributes().isEmpty()) {
             return;
         }
         rep.getAttributes().entrySet()
                 .removeIf(e -> e.getKey().startsWith("ssf."));
+    }
+
+    private static void logIgnoredDefaultRoles(ClientRepresentation rep) {
+        logger.debugf("Ignoring 'defaultRoles' of client '%s': changing the realm default roles requires the '%s' role",
+                rep.getClientId(), AdminRoles.MANAGE_REALM);
     }
 }

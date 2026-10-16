@@ -47,6 +47,22 @@ You can use the following provider option to increase or decrease the limit.
 bin/kc.[sh|bat] --spi-connections-http-client-default-max-consumed-response-size=1000000
 ----
 
+=== Dynamic client registration requires administrator privileges for realm default roles, authentication flow overrides and full scope
+
+The deprecated `clients-registrations/default` endpoint accepts the {project_name} specific client representation, which contains settings whose effect reaches beyond the registered client.
+Previously, these settings were applied for any caller allowed to register or update the client, including callers using an initial access token, a registration access token, or a bearer token with only the `create-client` or `manage-clients` role.
+Starting with this release, the following rules apply to all client registration endpoints:
+
+* The deprecated `defaultRoles` field adds client roles to the realm-wide `default-roles-<realm>` composite, which grants these roles to every user of the realm.
+It is now applied only when the request is authenticated with a bearer token that has the `manage-realm` role, which is the role required to change the realm default roles through the Admin REST API.
+Otherwise, the field is ignored and the realm default roles are left unchanged.
+* `authenticationFlowBindingOverrides` bind a client to a different authentication flow of the realm.
+Requests authenticated with an initial access token or a registration access token can no longer set, change, or clear them; the field is ignored for such requests.
+* A registration access token can no longer enable `fullScopeAllowed` on a client where it has been disabled.
+Such an update is rejected with `400 Bad Request` and the `invalid_client_metadata` error.
+
+Use the Admin REST API, or a bearer token with the corresponding administrator role, to change these settings.
+
 // ------------------------ Notable changes ------------------------ //
 == Notable changes
 

@@ -159,6 +159,15 @@ public class ClientRegistrationAuth {
                 && !hasRole(AdminRoles.MANAGE_CLIENTS);
     }
 
+    /**
+     * {@code defaultRoles} on client registration writes into the realm-wide default-role composite.
+     * That requires {@link AdminRoles#MANAGE_REALM}; create-client, IAT and RAT must not do it.
+     */
+    public boolean canManageRealmDefaultRoles() {
+        init();
+        return isBearerToken() && hasRole(AdminRoles.MANAGE_REALM);
+    }
+
     public RegistrationAuth requireCreate(ClientRegistrationContext context) {
         init();
 
